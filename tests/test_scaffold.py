@@ -17,4 +17,15 @@ class ScaffoldTest(unittest.TestCase):
             story = json.loads(output.read_text())
             self.assertEqual(story["claims"][0]["text"], "公式発表です")
             self.assertEqual(story["script"][-1]["caption"], "AIツールウォッチ")
+    def test_teen_story_timeline_and_caption_limits(self):
+        story = json.loads((ROOT / "config/stories/chatgpt-teens-ja.json").read_text())
+        self.assertEqual(story["status"], "ready")
+        self.assertEqual(story["script"][0]["start"], 0)
+        self.assertEqual(story["script"][-1]["end"], 12)
+        for current, following in zip(story["script"], story["script"][1:]):
+            self.assertEqual(current["end"], following["start"])
+        for cue in story["script"]:
+            lines = cue["caption"].splitlines()
+            self.assertLessEqual(len(lines), 2)
+            self.assertTrue(all(len(line) <= 18 for line in lines))
 if __name__ == "__main__": unittest.main()
