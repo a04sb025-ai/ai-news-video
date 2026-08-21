@@ -1,0 +1,9 @@
+{
+  "project": "AIツールウォッチ",
+  "language": "ja-JP",
+  "canvas": {"width": 1080, "height": 1920, "fps": 30},
+  "duration_seconds": {"min": 10, "max": 15},
+  "editorial": {"hook_deadline_seconds": 3, "one_story_per_video": true, "prefer_primary_sources": true, "prohibit_exaggeration": true, "label_inference": true},
+  "captions": {"max_chars_per_cue": 18, "max_lines": 2, "safe_margin_px": {"horizontal": 90, "top": 160, "bottom": 260}},
+  "outro": {"text": "AIツールウォッチ", "duration_seconds": 1.2}
+}
