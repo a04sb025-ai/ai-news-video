@@ -78,6 +78,8 @@ make qa VIDEO=dist/chatgpt-teens-ja.mp4
 
 レンダリング結果は `dist/chatgpt-teens-ja.mp4` に出力されます。字幕は各キュー2行以内・1行18文字以内に収め、0〜2.5秒のフック、2.5〜6秒の説明、6〜10秒の学習と安全、10〜12秒のアウトロで構成しています。
 
+GitHub Actionsから実レンダリングする場合は **Actions → Render AI news video → Run workflow** を開き、`render_target` の既定値 `teen_chatgpt` のまま実行します。このモードではURL入力は不要です。完了後、実行画面の **Artifacts** から `ai-news-video-<実行番号>` をダウンロードすると、完成MP4、使用したストーリーJSON、QAログを確認できます。従来のURLレンダリングは `generic_url` を選び、`news_url` を入力すると実行できます。
+
 ## APIキー、外部サービス、費用
 
 **初回に必須の有料APIキーはありません。** ニュースURLの取得、手作業/ローカルでのファクトチェック、FFmpeg、OpenMontage自体、手元素材、ライセンス適合した公式素材で進められます。画像やロゴは利用条件と出典を必ず記録します。

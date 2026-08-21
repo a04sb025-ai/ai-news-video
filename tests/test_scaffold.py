@@ -20,6 +20,9 @@ class ScaffoldTest(unittest.TestCase):
     def test_teen_story_timeline_and_caption_limits(self):
         story = json.loads((ROOT / "config/stories/chatgpt-teens-ja.json").read_text())
         self.assertEqual(story["status"], "ready")
+        self.assertEqual(story["published_at"], "2026-08-18T00:00:00Z")
+        self.assertEqual(story["source_url"], "https://openai.com/index/introducing-chatgpt-for-teens/")
+        self.assertTrue(all(claim["source_url"] == story["source_url"] for claim in story["claims"]))
         self.assertEqual(story["script"][0]["start"], 0)
         self.assertEqual(story["script"][-1]["end"], 12)
         for current, following in zip(story["script"], story["script"][1:]):
@@ -28,4 +31,11 @@ class ScaffoldTest(unittest.TestCase):
             lines = cue["caption"].splitlines()
             self.assertLessEqual(len(lines), 2)
             self.assertTrue(all(len(line) <= 18 for line in lines))
+    def test_workflow_supports_dedicated_and_generic_rendering(self):
+        workflow = (ROOT / ".github/workflows/render-video.yml").read_text()
+        self.assertIn("default: teen_chatgpt", workflow)
+        self.assertIn("run: make render-teen-news", workflow)
+        self.assertIn("if: inputs.render_target == 'generic_url'", workflow)
+        self.assertIn("python3 scripts/prepare_story.py", workflow)
+        self.assertIn("config/stories/chatgpt-teens-ja.json", workflow)
 if __name__ == "__main__": unittest.main()

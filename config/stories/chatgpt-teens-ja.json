@@ -1,35 +1,35 @@
 {
-  "source_url": "https://openai.com/index/teen-safety-freedom-and-privacy/",
-  "published_at": "2025-09-16T00:00:00Z",
+  "source_url": "https://openai.com/index/introducing-chatgpt-for-teens/",
+  "published_at": "2026-08-18T00:00:00Z",
   "status": "ready",
   "claims": [
     {
-      "text": "OpenAIは18歳未満向けのChatGPT体験に追加の保護策を設ける方針を発表した",
-      "source_url": "https://openai.com/index/teen-safety-freedom-and-privacy/"
+      "text": "OpenAIは13歳から17歳向けのChatGPT for Teensを発表した",
+      "source_url": "https://openai.com/index/introducing-chatgpt-for-teens/"
     },
     {
-      "text": "年齢に応じた安全策と保護者向け機能を重視している",
-      "source_url": "https://openai.com/index/teen-safety-freedom-and-privacy/"
+      "text": "ChatGPT for Teensは学習や創作を支援し、安全性に配慮した10代向けの体験である",
+      "source_url": "https://openai.com/index/introducing-chatgpt-for-teens/"
     }
   ],
   "script": [
     {
       "start": 0.0,
       "end": 2.5,
-      "narration": "OpenAIが、10代向けのChatGPTを始めました。",
-      "caption": "OpenAI、\n10代向けChatGPT"
+      "narration": "OpenAIが、ChatGPT for Teensを発表しました。",
+      "caption": "OpenAI、10代向け\nChatGPTを発表"
     },
     {
       "start": 2.5,
       "end": 6.0,
-      "narration": "つまり、13歳から17歳が使いやすいChatGPTです。",
-      "caption": "13〜17歳が使いやすい\nChatGPTです"
+      "narration": "13歳から17歳のために作られたChatGPTです。",
+      "caption": "13〜17歳のための\nChatGPTです"
     },
     {
       "start": 6.0,
       "end": 10.0,
-      "narration": "学習を助け、安全面にも配慮されているのがポイントです。",
-      "caption": "学習を助けながら、\n安全面にも配慮"
+      "narration": "学習や創作を支えながら、安全面にも配慮されています。",
+      "caption": "学習や創作を支援\n安全面にも配慮"
     },
     {
       "start": 10.0,
