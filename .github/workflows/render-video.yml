@@ -1,0 +1,58 @@
+name: Render AI news video
+on:
+  workflow_dispatch:
+    inputs:
+      news_url:
+        description: Official or primary-source AI news URL
+        required: true
+        type: string
+      headline:
+        description: Optional verified Japanese headline (used if the page blocks retrieval)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install free media dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk open-jtalk open-jtalk-mecab-naist-jdic hts-voice-nitech-jp-atr503-m001
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+      - name: Fetch and validate latest OpenMontage
+        run: |
+          ./scripts/openmontage.sh install
+          ./scripts/setup_openmontage.sh
+      - name: Prepare URL input
+        env:
+          NEWS_URL: ${{ inputs.news_url }}
+          HEADLINE: ${{ inputs.headline }}
+        run: python3 scripts/prepare_story.py "$NEWS_URL" work/story.json "$HEADLINE"
+      - name: Render 12-second reference video
+        run: python3 scripts/render_reference.py work/story.json dist/ai-news.mp4
+      - name: Automated QA
+        run: |
+          python3 scripts/check_video.py dist/ai-news.mp4 | tee reports/qa.txt
+          ffmpeg -v error -i dist/ai-news.mp4 -f null - 2> reports/decode-errors.txt
+          ffmpeg -i dist/ai-news.mp4 -vf blackdetect=d=0.3 -an -f null - 2> reports/blackdetect.txt
+          ffmpeg -i dist/ai-news.mp4 -vf freezedetect=n=-50dB:d=1 -an -f null - 2> reports/freezedetect.txt
+          ffmpeg -i dist/ai-news.mp4 -af loudnorm=print_format=json -f null - 2> reports/loudness.txt
+      - name: Upload video and QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-news-video-${{ github.run_number }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            dist/*.mp4
+            reports/**
+            work/story.json
+
