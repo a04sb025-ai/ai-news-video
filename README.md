@@ -26,6 +26,16 @@ make doctor
 
 この環境のようにGitHubへの通信が禁止されている場合、`make setup` は課金せず明示的に失敗します。通信可能な環境で再実行してください。OpenMontage側の追加セットアップ/コマンドは、取得した公式READMEに従ってください。
 
+## GitHub Actionsでレンダリングする
+
+`.github/workflows/render-video.yml` は `workflow_dispatch` 専用です。GitHubの **Actions → Render AI news video → Run workflow** で、一次情報の `news_url` を入力してください。ページタイトルを取得できないサイトでは、確認済みの日本語 `headline` も入力します。
+
+Ubuntu runnerはFFmpeg、ffprobe、Noto CJKフォント、Open JTalkをaptから導入し、OpenMontageのmainブランチ最新版を取得します。必須4文書を検証し、upstreamのlockfileに対応するパッケージマネージャーで依存関係を再現可能にインストールします。その後、無料のリファレンスレンダラーが12秒の日本語音声・字幕付きMP4を生成し、メタデータ、デコード、黒画面、静止フレーム、ラウドネスを検査します。MP4、入力JSON、OpenMontageのコミット/文書ハッシュ、QAログは14日間Artifactに保存されます。
+
+リファレンスレンダラーは **CIで実レンダリング可能なことを課金なしで証明する初期実装** であり、URLのタイトル以外を自動要約しません。OpenMontage最新版の必須文書を取得後、その公式プロジェクト生成・レンダー手順に置き換えるのが次段階です。現時点でもOpenMontageの取得と依存関係検証に失敗すればジョブを停止し、OpenMontageなしで成功したようには見せません。
+
+Actionsにはリポジトリ読み取り権限だけを与えます。Secretsおよび有料APIキーは不要です。第三者URLへアクセスするため、信頼できる公式URLだけを入力してください。
+
 ## ニュースURLを受け取った後の手順
 
 ```bash

@@ -12,3 +12,5 @@ reports/*
 *.mp4
 *.wav
 *.mp3
+*.srt
+vendor/openmontage.version
