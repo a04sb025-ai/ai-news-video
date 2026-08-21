@@ -1,0 +1,47 @@
+{
+  "source_url": "https://openai.com/index/introducing-chatgpt-for-teens/",
+  "published_at": "2026-08-18T00:00:00Z",
+  "status": "ready",
+  "claims": [
+    {
+      "text": "OpenAIは13歳から17歳向けのChatGPT for Teensを発表した",
+      "source_url": "https://openai.com/index/introducing-chatgpt-for-teens/"
+    },
+    {
+      "text": "ChatGPT for Teensは学習や創作を支援し、安全性に配慮した10代向けの体験である",
+      "source_url": "https://openai.com/index/introducing-chatgpt-for-teens/"
+    }
+  ],
+  "script": [
+    {
+      "start": 0.0,
+      "end": 2.5,
+      "narration": "OpenAIが、ChatGPT for Teensを発表しました。",
+      "caption": "OpenAI、10代向け\nChatGPTを発表"
+    },
+    {
+      "start": 2.5,
+      "end": 6.0,
+      "narration": "13歳から17歳のために作られたChatGPTです。",
+      "caption": "13〜17歳のための\nChatGPTです"
+    },
+    {
+      "start": 6.0,
+      "end": 10.0,
+      "narration": "学習や創作を支えながら、安全面にも配慮されています。",
+      "caption": "学習や創作を支援\n安全面にも配慮"
+    },
+    {
+      "start": 10.0,
+      "end": 12.0,
+      "narration": "AIニュース速報、AIツールウォッチ。",
+      "caption": "AIツールウォッチ"
+    }
+  ],
+  "shots": [
+    {"start": 0.0, "end": 2.5, "visual": "チャット吹き出し、13–17バッジ、速報タイトル"},
+    {"start": 2.5, "end": 6.0, "visual": "学生向けの質問と回答を示す会話UI"},
+    {"start": 6.0, "end": 10.0, "visual": "本と盾を並べた学習・安全の対比"},
+    {"start": 10.0, "end": 12.0, "visual": "AIツールウォッチのブランドアウトロ"}
+  ]
+}
