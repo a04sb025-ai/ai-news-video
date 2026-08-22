@@ -69,18 +69,18 @@ ffmpeg -i dist/news.mp4 -af loudnorm=print_format=json -f null - 2>&1
 
 ## 収録サンプル：10代向けChatGPTニュース
 
-`config/stories/chatgpt-teens-ja.json` に、12秒・4シーンの完成台本とショット表を収録しています。外部画像や有料APIを使わず、会話カード、本、盾、年齢バッジをモーショングラフィックスとして描画します。
+`config/stories/chatgpt-teens-ja.json` に、13秒・4シーンの完成台本とショット表を収録しています。OpenAI画像Providerで生成・キャッシュした3枚のエディトリアルイラストを優先し、利用できない場合は課金なしのモーショングラフィックスへフォールバックします。
 
 ```bash
 make render-teen-news
 make qa VIDEO=dist/chatgpt-teens-ja.mp4
 ```
 
-レンダリング結果は `dist/chatgpt-teens-ja.mp4` に出力されます。字幕は各キュー2行以内・1行18文字以内に収め、0〜2.5秒のフック、2.5〜6秒の説明、6〜10秒の学習と安全、10〜12秒のアウトロで構成しています。
+レンダリング結果は `dist/chatgpt-teens-ja.mp4` に出力されます。字幕は各キュー2行以内・1行18文字以内に収め、0〜3秒のサムネイル兼タイトル、3〜7秒の「つまり、何？」、7〜11秒の「ここがポイント」、11〜13秒の控えめなアウトロで構成しています。恒久的な制作基準は `docs/openmontage-opening-visual-spec.md` にあり、今後の動画も「冒頭3秒＝サムネイル」を既定とします。
 
-GitHub Actionsから実レンダリングする場合は **Actions → Render AI news video → Run workflow** を開き、`render_target` の既定値 `teen_chatgpt` のまま実行します。このモードではURL入力は不要です。完了後、実行画面の **Artifacts** から `ai-news-video-<実行番号>` をダウンロードすると、完成MP4、使用したストーリーJSON、QAログを確認できます。従来のURLレンダリングは `generic_url` を選び、`news_url` を入力すると実行できます。
+GitHub Actionsから実レンダリングする場合は **Actions → Render AI news video → Run workflow** を開き、`render_target` の既定値 `teen_chatgpt` のまま実行します。このモードではURL入力は不要です。完了後、実行画面の **Artifacts** から `ai-news-video-<実行番号>` をダウンロードすると、完成MP4、使用したストーリーJSON、通常QAログ、0.5 / 1.5 / 2.5秒の冒頭PNGと冒頭QA JSON、使用した生成画像を確認できます。従来のURLレンダリングは `generic_url` を選び、`news_url` を入力すると実行できます。
 
-ティーン向けモードはOpenMontageのOpenAI画像プロバイダと同じ環境変数規約に合わせ、Repository Secretの`OPENAI_API_KEY`から2枚のイラストを生成します。キーは設定ファイル、コマンド引数、ログ、Artifactには保存しません。生成済みPNGがあれば再利用し、API障害やSecret未設定時は従来のFFmpegモーショングラフィックスへ自動的にフォールバックします。GitHubの **Settings → Secrets and variables → Actions → New repository secret** でSecretを登録してください。
+ティーン向けモードはOpenMontageのOpenAI画像プロバイダと同じ環境変数規約に合わせ、Repository Secretの`OPENAI_API_KEY`からヒーローを含む3枚のイラストを生成します。キーは設定ファイル、コマンド引数、ログ、Artifactには保存しません。生成済みPNGがあれば再利用し、API障害やSecret未設定時は従来のFFmpegモーショングラフィックスへ自動的にフォールバックします。GitHubの **Settings → Secrets and variables → Actions → New repository secret** でSecretを登録してください。
 
 ## APIキー、外部サービス、費用
 

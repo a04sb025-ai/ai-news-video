@@ -15,33 +15,33 @@
   "script": [
     {
       "start": 0.0,
-      "end": 2.5,
-      "narration": "OpenAIが、ChatGPT for Teensを発表しました。",
-      "caption": "OpenAI、10代向け\nChatGPTを発表"
+      "end": 3.0,
+      "narration": "ChatGPTに、13歳から17歳向けの新しい体験です。",
+      "caption": "ChatGPT、\n13〜17歳向けに"
     },
     {
-      "start": 2.5,
-      "end": 6.0,
-      "narration": "13歳から17歳のために作られたChatGPTです。",
-      "caption": "13〜17歳のための\nChatGPTです"
+      "start": 3.0,
+      "end": 7.0,
+      "narration": "つまり、13歳から17歳が使いやすいChatGPTです。",
+      "caption": "13〜17歳が使いやすい\nChatGPTです"
     },
     {
-      "start": 6.0,
-      "end": 10.0,
+      "start": 7.0,
+      "end": 11.0,
       "narration": "学習や創作を支えながら、安全面にも配慮されています。",
-      "caption": "学習や創作を支援\n安全面にも配慮"
+      "caption": "学習を助けながら\n安全面にも配慮"
     },
     {
-      "start": 10.0,
-      "end": 12.0,
+      "start": 11.0,
+      "end": 13.0,
       "narration": "AIニュース速報、AIツールウォッチ。",
       "caption": "AIツールウォッチ"
     }
   ],
   "shots": [
-    {"start": 0.0, "end": 2.5, "visual": "チャット吹き出し、13–17バッジ、速報タイトル"},
-    {"start": 2.5, "end": 6.0, "visual": "学生向けの質問と回答を示す会話UI"},
-    {"start": 6.0, "end": 10.0, "visual": "本と盾を並べた学習・安全の対比"},
-    {"start": 10.0, "end": 12.0, "visual": "AIツールウォッチのブランドアウトロ"}
+    {"start": 0.0, "end": 3.0, "visual": "大きな10代の学生とChatGPT利用場面。見出し込みでSNSサムネイルとして成立"},
+    {"start": 3.0, "end": 7.0, "visual": "学生がPCでAIに勉強を相談するエディトリアルイラスト"},
+    {"start": 7.0, "end": 11.0, "visual": "学生へのAI学習支援と安全な環境が一枚で伝わるイラスト"},
+    {"start": 11.0, "end": 13.0, "visual": "控えめなAIニュース速報／AIツールウォッチのブランドアウトロ"}
   ]
 }
