@@ -1,0 +1,99 @@
+name: One-shot Claude Academy video
+run-name: One shot Claude Academy / 20260823-claude-academy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/one-shot-claude-academy.yml
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    if: contains(github.event.head_commit.message, 'render Claude Academy test video')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install media dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk open-jtalk open-jtalk-mecab-naist-jdic hts-voice-nitech-jp-atr503-m001
+      - name: Prepare verified daily story
+        run: |
+          mkdir -p work/daily reports dist
+          cat > work/daily/dispatch-payload.json <<'JSON'
+          {
+            "request_id": "20260823-claude-academy",
+            "news_key": "anthropic-claude-academy-2026-08-20",
+            "source_url": "https://claude.com/blog/anthropics-approach-to-teaching-and-learning-ai",
+            "article_url": "https://aitoolwatch.jp/articles/2026-08-23-claude-academy/",
+            "headline": "Claude Academy、正式公開",
+            "hook": "クロードを公式教材で学べる場が公開されました。",
+            "summary": "入門から開発まで、目的別に学べます。",
+            "points": [
+              "Claude Codeも学べます。",
+              "MCPやサブエージェントも学べます。"
+            ],
+            "narration_terms": {
+              "Claude Code": "クロードコード",
+              "MCP": "エムシーピー"
+            }
+          }
+          JSON
+          python3 scripts/daily_story.py prepare work/daily/dispatch-payload.json work/daily
+          echo "VIDEO_FILE=$(cat work/daily/video-filename.txt)" >> "$GITHUB_ENV"
+          echo "CONTENT_HASH=$(python3 -c 'import json; print(json.load(open("work/daily/story.json"))["content_hash"])')" >> "$GITHUB_ENV"
+      - name: Restore illustration cache
+        uses: actions/cache@v4
+        with:
+          path: assets/generated/**
+          key: illustrations-daily_story-20260823-claude-academy-${{ env.CONTENT_HASH }}-${{ hashFiles('config/image-generation.json', 'scripts/generate_story_images.py') }}
+      - name: Generate editorial illustrations
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python3 scripts/generate_story_images.py work/daily/story.json 2>&1 | tee reports/image-generation.txt
+      - name: Voice QA and render
+        run: |
+          python3 scripts/check_story_voice.py work/daily/story.json reports/voice-script-qa.json | tee reports/voice-script-qa.txt
+          python3 scripts/render_reference.py work/daily/story.json "dist/$VIDEO_FILE"
+      - name: Opening and scene QA
+        run: |
+          scripts/opening_qa_with_correction.sh "dist/$VIDEO_FILE" work/daily/story.json reports/opening
+          python3 scripts/extract_review_frames.py "dist/$VIDEO_FILE" reports/scenes
+      - name: Automated video QA
+        run: |
+          python3 scripts/check_video.py "dist/$VIDEO_FILE" | tee reports/qa.txt
+          ffmpeg -v error -i "dist/$VIDEO_FILE" -f null - 2> reports/decode-errors.txt
+          ffmpeg -i "dist/$VIDEO_FILE" -vf blackdetect=d=0.3 -an -f null - 2> reports/blackdetect.txt
+          ffmpeg -i "dist/$VIDEO_FILE" -vf freezedetect=n=-50dB:d=1 -an -f null - 2> reports/freezedetect.txt
+          ffmpeg -i "dist/$VIDEO_FILE" -af loudnorm=print_format=json -f null - 2> reports/loudness.txt
+      - name: Write automation decision
+        if: always()
+        run: python3 scripts/write_automation_result.py work/daily/story.json "dist/$VIDEO_FILE" reports reports/automation-result.json
+      - name: Upload video and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-news-video-20260823-claude-academy-${{ github.run_number }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            dist/*.mp4
+            dist/*.render.json
+            reports/**
+            work/daily/**
+            assets/generated/**
+      - name: Require auto-publish-ready result
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          r=json.load(open('reports/automation-result.json'))
+          print(json.dumps(r, ensure_ascii=False, indent=2))
+          assert r.get('success') is True
+          assert r.get('auto_publish_ready') is True
+          PY
