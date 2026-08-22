@@ -39,6 +39,18 @@ jobs:
         run: |
           ./scripts/openmontage.sh install
           ./scripts/setup_openmontage.sh
+      - name: Restore generated illustration cache
+        if: inputs.render_target == 'teen_chatgpt'
+        uses: actions/cache@v4
+        with:
+          path: assets/generated/*.png
+          key: teen-illustrations-${{ hashFiles('config/image-generation.json', 'scripts/generate_story_images.py') }}
+      - name: Generate ChatGPT for Teens illustrations
+        if: inputs.render_target == 'teen_chatgpt'
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: make generate-teen-images 2>&1 | tee reports/image-generation.txt
       - name: Prepare URL input
         if: inputs.render_target == 'generic_url'
         env:
@@ -79,3 +91,4 @@ jobs:
             reports/**
             work/story.json
             config/stories/chatgpt-teens-ja.json
+            assets/generated/*.png

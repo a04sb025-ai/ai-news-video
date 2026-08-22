@@ -22,6 +22,9 @@ if not dictionary or not voice:
 WIDTH, HEIGHT = 1080, 1920
 FPS, DURATION = 30, 12
 PALETTE = ["18213A", "122E3A", "25304A", "111827"]
+ASSET_DIR = Path(__file__).resolve().parents[1] / "assets/generated"
+STORY_IMAGES = [ASSET_DIR / "scene-teen-chat.png", ASSET_DIR / "scene-learning-safety.png"]
+USE_STORY_IMAGES = all(image.is_file() and image.stat().st_size > 0 for image in STORY_IMAGES)
 
 
 def stamp(seconds):
@@ -87,7 +90,8 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     for index, cue in enumerate(story["script"]):
         start, end = cue["start"], cue["end"]
         color = PALETTE[index % len(PALETTE)]
-        events.append(vector(start, end, rect_path(0, 0, WIDTH, HEIGHT), color))
+        if not (USE_STORY_IMAGES and index in (1, 2)):
+            events.append(vector(start, end, rect_path(0, 0, WIDTH, HEIGHT), color))
         # Progress rail makes the twelve-second structure readable at a glance.
         events.append(vector(start, end, rect_path(72, 1735, 936, 8), "4A526A", layer=1))
         progress = round(936 * end / DURATION)
@@ -104,21 +108,23 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             events.append(dialogue(start, end, "Headline", cue["caption"], r"\fad(120,100)", 4))
         elif index == 1:
             events.append(dialogue(start, end, "Eyebrow", "つまり、何？", r"\fad(100,100)", 3))
-            events.append(vector(start, end, rect_path(145, 430, 790, 690), "FFFFFF", r"\fad(120,100)", 2))
-            events.append(vector(start + .20, end, rect_path(220, 545, 520, 100), "EAF2FF", r"\fad(100,100)", 3))
-            events.append(dialogue(start + .20, end, "Small", "宿題をわかりやすく教えて", r"\pos(480,595)\fad(100,100)", 4))
-            events.append(vector(start + .55, end, rect_path(340, 700, 515, 100), "C9F7FF", r"\fad(100,100)", 3))
-            events.append(dialogue(start + .55, end, "Small", "もちろん！一緒に考えよう", r"\pos(597,750)\1c&H151B2B&\fad(100,100)", 4))
+            if not USE_STORY_IMAGES:
+                events.append(vector(start, end, rect_path(145, 430, 790, 690), "FFFFFF", r"\fad(120,100)", 2))
+                events.append(vector(start + .20, end, rect_path(220, 545, 520, 100), "EAF2FF", r"\fad(100,100)", 3))
+                events.append(dialogue(start + .20, end, "Small", "宿題をわかりやすく教えて", r"\pos(480,595)\fad(100,100)", 4))
+                events.append(vector(start + .55, end, rect_path(340, 700, 515, 100), "C9F7FF", r"\fad(100,100)", 3))
+                events.append(dialogue(start + .55, end, "Small", "もちろん！一緒に考えよう", r"\pos(597,750)\1c&H151B2B&\fad(100,100)", 4))
             events.append(dialogue(start, end, "Caption", cue["caption"], r"\fad(120,100)", 4))
         elif index == 2:
             events.append(dialogue(start, end, "Eyebrow", "ここがポイント", r"\fad(100,100)", 3))
-            events.append(vector(start, end, rect_path(100, 440, 405, 610), "FFF3C4", r"\fad(100,100)", 2))
-            events.append(vector(start + .20, end, rect_path(575, 440, 405, 610), "C9F7FF", r"\fad(100,100)", 2))
-            # Simple book and shield symbols, drawn without external assets.
-            events.append(vector(start, end, "m 190 590 l 300 565 300 800 190 825 m 300 565 l 410 590 410 825 300 800", "F2B84B", r"\fad(100,100)", 3))
-            events.append(vector(start + .20, end, "m 775 555 l 900 605 875 785 b 865 850 815 890 775 910 b 735 890 685 850 675 785 l 650 605", "58D6FF", r"\fad(100,100)", 3))
-            events.append(dialogue(start, end, "Label", "学 習", r"\pos(300,940)\fs44\fad(100,100)", 4))
-            events.append(dialogue(start + .20, end, "Label", "安 全", r"\pos(775,940)\fs44\fad(100,100)", 4))
+            if not USE_STORY_IMAGES:
+                events.append(vector(start, end, rect_path(100, 440, 405, 610), "FFF3C4", r"\fad(100,100)", 2))
+                events.append(vector(start + .20, end, rect_path(575, 440, 405, 610), "C9F7FF", r"\fad(100,100)", 2))
+                # Simple book and shield symbols, drawn without external assets.
+                events.append(vector(start, end, "m 190 590 l 300 565 300 800 190 825 m 300 565 l 410 590 410 825 300 800", "F2B84B", r"\fad(100,100)", 3))
+                events.append(vector(start + .20, end, "m 775 555 l 900 605 875 785 b 865 850 815 890 775 910 b 735 890 685 850 675 785 l 650 605", "58D6FF", r"\fad(100,100)", 3))
+                events.append(dialogue(start, end, "Label", "学 習", r"\pos(300,940)\fs44\fad(100,100)", 4))
+                events.append(dialogue(start + .20, end, "Label", "安 全", r"\pos(775,940)\fs44\fad(100,100)", 4))
             events.append(dialogue(start, end, "Caption", cue["caption"], r"\fad(120,100)", 4))
         else:
             events.append(vector(start, end, "m 540 500 l 590 630 730 635 620 720 660 855 540 780 420 855 460 720 350 635 490 630", "58D6FF", r"\fad(120,160)", 2))
@@ -128,10 +134,31 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     ass.write_text(header + "\n".join(events) + "\n")
     command = [
         "ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c=0x111827:s={WIDTH}x{HEIGHT}:r={FPS}:d={DURATION}",
-        "-i", str(wav), "-vf", f"subtitles={ass}",
+        "-i", str(wav),
+    ]
+    if USE_STORY_IMAGES:
+        command.extend(["-loop", "1", "-i", str(STORY_IMAGES[0]), "-loop", "1", "-i", str(STORY_IMAGES[1])])
+        filters = (
+            f"[2:v]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT},"
+            f"zoompan=z='min(zoom+0.0007,1.06)':x='iw/2-(iw/zoom/2)+12*sin(on/30)':"
+            f"y='ih/2-(ih/zoom/2)':d=105:s={WIDTH}x{HEIGHT}:fps={FPS},"
+            "fade=t=in:st=0:d=0.25:alpha=1,fade=t=out:st=3.15:d=0.35:alpha=1,setpts=PTS+2.5/TB[teen];"
+            f"[3:v]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT},"
+            f"zoompan=z='min(zoom+0.0006,1.05)':x='iw/2-(iw/zoom/2)':"
+            f"y='ih/2-(ih/zoom/2)+10*cos(on/35)':d=120:s={WIDTH}x{HEIGHT}:fps={FPS},"
+            "fade=t=in:st=0:d=0.25:alpha=1,fade=t=out:st=3.65:d=0.35:alpha=1,setpts=PTS+6/TB[safety];"
+            "[0:v][teen]overlay=enable='between(t,2.5,6)'[withteen];"
+            "[withteen][safety]overlay=enable='between(t,6,10)',"
+            f"subtitles={ass}[video]"
+        )
+        command.extend(["-filter_complex", filters, "-map", "[video]", "-map", "1:a"])
+    else:
+        print("Story images unavailable; using motion-graphics fallback", file=sys.stderr)
+        command.extend(["-vf", f"subtitles={ass}"])
+    command.extend([
         "-af", f"apad=pad_dur={DURATION},loudnorm=I=-16:TP=-1.5:LRA=11", "-t", str(DURATION),
         "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
         "-movflags", "+faststart", str(output),
-    ]
+    ])
     subprocess.run(command, check=True)
 print(output)

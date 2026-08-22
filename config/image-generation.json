@@ -1,0 +1,8 @@
+{
+  "provider": "openai",
+  "model": "gpt-image-1",
+  "size": "1024x1536",
+  "quality": "medium",
+  "api_key_env": "OPENAI_API_KEY",
+  "output_directory": "assets/generated"
+}
