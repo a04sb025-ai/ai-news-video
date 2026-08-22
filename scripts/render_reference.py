@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Render a lively, zero-API vertical news short from a story JSON file."""
 import json
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import wave
 from pathlib import Path
 
 
@@ -20,10 +22,19 @@ if not dictionary or not voice:
     raise SystemExit("Open JTalk dictionary/voice not found")
 
 WIDTH, HEIGHT = 1080, 1920
-FPS, DURATION = 30, 12
+FPS = 30
+DURATION = story["script"][-1]["end"]
+SAFE_OPENING = os.environ.get("OPENING_SAFE_MODE") == "1"
 PALETTE = ["18213A", "122E3A", "25304A", "111827"]
-ASSET_DIR = Path(__file__).resolve().parents[1] / "assets/generated"
-STORY_IMAGES = [ASSET_DIR / "scene-teen-chat.png", ASSET_DIR / "scene-learning-safety.png"]
+ROOT = Path(__file__).resolve().parents[1]
+IMAGE_CONFIG = json.loads((ROOT / "config/image-generation.json").read_text())
+ASSET_DIR = ROOT / IMAGE_CONFIG["output_directory"] / IMAGE_CONFIG["prompt_version"]
+STORY_IMAGES = [
+    ASSET_DIR / "scene-teen-hero.png",
+    ASSET_DIR / "scene-teen-thinking.png",
+    ASSET_DIR / "scene-teen-safety.png",
+    ASSET_DIR / "scene-teen-healthy-use.png",
+]
 USE_STORY_IMAGES = all(image.is_file() and image.stat().st_size > 0 for image in STORY_IMAGES)
 
 
@@ -59,11 +70,39 @@ with tempfile.TemporaryDirectory() as directory:
     tmp = Path(directory)
     wav = tmp / "voice.wav"
     ass = tmp / "motion.ass"
-    narration = tmp / "narration.txt"
-    narration.write_text("\n".join(cue["narration"] for cue in story["script"]))
+    cue_wavs = []
+    cue_durations = []
+    for index, cue in enumerate(story["script"]):
+        narration = tmp / f"narration-{index}.txt"
+        raw_wav = tmp / f"voice-{index}-raw.wav"
+        fitted_wav = tmp / f"voice-{index}.wav"
+        narration.write_text(cue["narration"])
+        subprocess.run(
+            ["open_jtalk", "-x", str(dictionary), "-m", str(voice), "-r", "1.18", "-ow", str(raw_wav), str(narration)],
+            check=True,
+        )
+        with wave.open(str(raw_wav)) as audio:
+            raw_duration = audio.getnframes() / audio.getframerate()
+        slot = cue["end"] - cue["start"]
+        speed = max(1.0, raw_duration / max(slot - .12, .5))
+        filters = []
+        while speed > 2:
+            filters.append("atempo=2")
+            speed /= 2
+        filters.append(f"atempo={speed:.4f}")
+        filters.extend((f"apad=pad_dur={slot}", f"atrim=duration={slot}"))
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw_wav),
+             "-af", ",".join(filters), str(fitted_wav)], check=True,
+        )
+        cue_wavs.append(fitted_wav)
+        cue_durations.append(slot)
+    audio_inputs = [value for cue_wav in cue_wavs for value in ("-i", str(cue_wav))]
+    audio_filter = "".join(f"[{i}:a]apad,atrim=duration={duration}[a{i}];" for i, duration in enumerate(cue_durations))
+    audio_filter += "".join(f"[a{i}]" for i in range(len(cue_wavs))) + f"concat=n={len(cue_wavs)}:v=0:a=1[out]"
     subprocess.run(
-        ["open_jtalk", "-x", str(dictionary), "-m", str(voice), "-r", "1.18", "-ow", str(wav), str(narration)],
-        check=True,
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *audio_inputs,
+         "-filter_complex", audio_filter, "-map", "[out]", str(wav)], check=True,
     )
 
     header = f"""[Script Info]
@@ -76,7 +115,7 @@ ScaledBorderAndShadow: yes
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
 Style: Eyebrow,Noto Sans CJK JP,38,&H00C9F7FF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,4,0,1,0,0,8,90,90,132,1
-Style: Headline,Noto Sans CJK JP,90,&H00FFFFFF,&H00FFFFFF,&H00101528,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,8,90,90,270,1
+Style: Headline,Noto Sans CJK JP,112,&H00FFFFFF,&H00FFFFFF,&H00101528,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,8,90,90,270,1
 Style: Caption,Noto Sans CJK JP,72,&H00FFFFFF,&H00FFFFFF,&H00101528,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,2,95,95,280,1
 Style: Label,Noto Sans CJK JP,42,&H00151B2B,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,0,0,5,20,20,20,1
 Style: Small,Noto Sans CJK JP,33,&H00D5DDF2,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,1,0,1,0,0,5,20,20,20,1
@@ -90,33 +129,33 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     for index, cue in enumerate(story["script"]):
         start, end = cue["start"], cue["end"]
         color = PALETTE[index % len(PALETTE)]
-        if not (USE_STORY_IMAGES and index in (1, 2)):
+        if not (USE_STORY_IMAGES and index < len(STORY_IMAGES)):
             events.append(vector(start, end, rect_path(0, 0, WIDTH, HEIGHT), color))
-        # Progress rail makes the twelve-second structure readable at a glance.
+        # Progress rail makes the short structure readable at a glance.
         events.append(vector(start, end, rect_path(72, 1735, 936, 8), "4A526A", layer=1))
         progress = round(936 * end / DURATION)
         events.append(vector(start, end, rect_path(72, 1735, progress, 8), "58D6FF", layer=2))
 
-        animation = r"\fad(120,100)\t(0,450,\fscx104\fscy104)"
         if index == 0:
-            events.append(dialogue(start, end, "Eyebrow", "AI NEWS  •  12 SEC", r"\fad(100,100)", 3))
-            # Chat bubble, student silhouette and age badge.
-            events.append(vector(start, end, "m 280 560 b 280 500 325 460 385 460 l 695 460 b 755 460 800 500 800 560 l 800 800 b 800 860 755 900 695 900 l 485 900 390 985 405 900 385 900 b 325 900 280 860 280 800", "FFFFFF", r"\fad(100,100)", 2))
-            events.append(dialogue(start, end, "Label", "AI", r"\pos(540,675)\fs108" + animation, 4))
-            events.append(vector(start, end, rect_path(752, 395, 210, 88), "58D6FF", r"\fad(180,100)", 3))
-            events.append(dialogue(start, end, "Label", "13–17", r"\pos(857,439)\fs40\fad(180,100)", 4))
-            events.append(dialogue(start, end, "Headline", cue["caption"], r"\fad(120,100)", 4))
+            events.append(dialogue(start, end, "Eyebrow", cue.get("label", "AI NEWS"), r"\fad(100,100)", 3))
+            # The opening is a thumbnail: image/subject first, one large conclusion, no decorative hero icon.
+            panel_alpha = "&H08&" if SAFE_OPENING else "&H28&"
+            events.append(vector(start, end, rect_path(42, 165, 996, 530), "101528", rf"\alpha{panel_alpha}\fad(80,80)", 2))
+            events.append(vector(start, end, rect_path(70, 205, 16, 360), "58D6FF", r"\fad(80,80)", 3))
+            events.append(dialogue(start, end, "Headline", cue["caption"], r"\an7\pos(112,255)\fad(80,80)", 4))
+            events.append(dialogue(start, end, "Small", cue.get("subcaption", ""), r"\an7\pos(115,610)\fs34\bord2\fad(100,80)", 4))
         elif index == 1:
-            events.append(dialogue(start, end, "Eyebrow", "つまり、何？", r"\fad(100,100)", 3))
+            events.append(dialogue(start, end, "Eyebrow", cue.get("label", "つまり、何？"), r"\fad(100,100)", 3))
             if not USE_STORY_IMAGES:
                 events.append(vector(start, end, rect_path(145, 430, 790, 690), "FFFFFF", r"\fad(120,100)", 2))
                 events.append(vector(start + .20, end, rect_path(220, 545, 520, 100), "EAF2FF", r"\fad(100,100)", 3))
                 events.append(dialogue(start + .20, end, "Small", "宿題をわかりやすく教えて", r"\pos(480,595)\fad(100,100)", 4))
                 events.append(vector(start + .55, end, rect_path(340, 700, 515, 100), "C9F7FF", r"\fad(100,100)", 3))
                 events.append(dialogue(start + .55, end, "Small", "もちろん！一緒に考えよう", r"\pos(597,750)\1c&H151B2B&\fad(100,100)", 4))
+            events.append(vector(start, end, rect_path(52, 1310, 976, 390), "101528", r"\alpha&H18&\fad(120,100)", 3))
             events.append(dialogue(start, end, "Caption", cue["caption"], r"\fad(120,100)", 4))
         elif index == 2:
-            events.append(dialogue(start, end, "Eyebrow", "ここがポイント", r"\fad(100,100)", 3))
+            events.append(dialogue(start, end, "Eyebrow", cue.get("label", "ここがポイント"), r"\fad(100,100)", 3))
             if not USE_STORY_IMAGES:
                 events.append(vector(start, end, rect_path(100, 440, 405, 610), "FFF3C4", r"\fad(100,100)", 2))
                 events.append(vector(start + .20, end, rect_path(575, 440, 405, 610), "C9F7FF", r"\fad(100,100)", 2))
@@ -125,11 +164,19 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 events.append(vector(start + .20, end, "m 775 555 l 900 605 875 785 b 865 850 815 890 775 910 b 735 890 685 850 675 785 l 650 605", "58D6FF", r"\fad(100,100)", 3))
                 events.append(dialogue(start, end, "Label", "学 習", r"\pos(300,940)\fs44\fad(100,100)", 4))
                 events.append(dialogue(start + .20, end, "Label", "安 全", r"\pos(775,940)\fs44\fad(100,100)", 4))
+            events.append(vector(start, end, rect_path(52, 1310, 976, 390), "101528", r"\alpha&H18&\fad(120,100)", 3))
+            events.append(dialogue(start, end, "Caption", cue["caption"], r"\fad(120,100)", 4))
+        elif index < len(story["script"]) - 1:
+            events.append(dialogue(start, end, "Eyebrow", cue.get("label", "さらに"), r"\fad(100,100)", 3))
+            if not USE_STORY_IMAGES:
+                events.append(vector(start, end, rect_path(145, 470, 790, 610), "C9F7FF", r"\fad(120,100)", 2))
+                events.append(dialogue(start, end, "Label", "休 憩", r"\pos(540,760)\fs72\fad(100,100)", 4))
+            events.append(vector(start, end, rect_path(52, 1310, 976, 390), "101528", r"\alpha&H18&\fad(120,100)", 3))
             events.append(dialogue(start, end, "Caption", cue["caption"], r"\fad(120,100)", 4))
         else:
-            events.append(vector(start, end, "m 540 500 l 590 630 730 635 620 720 660 855 540 780 420 855 460 720 350 635 490 630", "58D6FF", r"\fad(120,160)", 2))
-            events.append(dialogue(start, end, "Outro", "AIニュース速報", r"\pos(540,1060)\fad(120,160)", 3))
-            events.append(dialogue(start, end, "Outro", "AIツールウォッチ", r"\pos(540,1165)\fs56\1c&H58D6FF&\fad(160,160)", 3))
+            events.append(vector(start, end, rect_path(190, 760, 700, 8), "58D6FF", r"\fad(120,160)", 2))
+            events.append(dialogue(start, end, "Outro", "AIニュース速報", r"\pos(540,900)\fs64\fad(120,160)", 3))
+            events.append(dialogue(start, end, "Outro", "AIツールウォッチ", r"\pos(540,1010)\fs52\1c&H58D6FF&\fad(160,160)", 3))
 
     ass.write_text(header + "\n".join(events) + "\n")
     command = [
@@ -137,20 +184,26 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         "-i", str(wav),
     ]
     if USE_STORY_IMAGES:
-        command.extend(["-loop", "1", "-i", str(STORY_IMAGES[0]), "-loop", "1", "-i", str(STORY_IMAGES[1])])
-        filters = (
-            f"[2:v]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT},"
-            f"zoompan=z='min(zoom+0.0007,1.06)':x='iw/2-(iw/zoom/2)+12*sin(on/30)':"
-            f"y='ih/2-(ih/zoom/2)':d=105:s={WIDTH}x{HEIGHT}:fps={FPS},"
-            "fade=t=in:st=0:d=0.25:alpha=1,fade=t=out:st=3.15:d=0.35:alpha=1,setpts=PTS+2.5/TB[teen];"
-            f"[3:v]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT},"
-            f"zoompan=z='min(zoom+0.0006,1.05)':x='iw/2-(iw/zoom/2)':"
-            f"y='ih/2-(ih/zoom/2)+10*cos(on/35)':d=120:s={WIDTH}x{HEIGHT}:fps={FPS},"
-            "fade=t=in:st=0:d=0.25:alpha=1,fade=t=out:st=3.65:d=0.35:alpha=1,setpts=PTS+6/TB[safety];"
-            "[0:v][teen]overlay=enable='between(t,2.5,6)'[withteen];"
-            "[withteen][safety]overlay=enable='between(t,6,10)',"
+        for image in STORY_IMAGES:
+            command.extend(["-loop", "1", "-i", str(image)])
+        scene_streams = []
+        for offset, (start, end) in enumerate(((0, 3), (3, 6), (6, 9), (9, 12)), start=2):
+            duration_frames = round((end - start) * FPS)
+            zoom = "0.00035" if start == 0 else "0.0006"
+            scene_streams.append(
+                f"[{offset}:v]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT},"
+                f"zoompan=z='min(zoom+{zoom},1.05)':x='iw/2-(iw/zoom/2)':"
+                f"y='ih/2-(ih/zoom/2)':d={duration_frames}:s={WIDTH}x{HEIGHT}:fps={FPS},"
+                f"fade=t=in:st=0:d=0.12:alpha=1,setpts=PTS+{start}/TB[scene{offset}];"
+            )
+        overlays = (
+            "[0:v][scene2]overlay=enable='between(t,0,3)'[v2];"
+            "[v2][scene3]overlay=enable='between(t,3,6)'[v3];"
+            "[v3][scene4]overlay=enable='between(t,6,9)'[v4];"
+            "[v4][scene5]overlay=enable='between(t,9,12)',"
             f"subtitles={ass}[video]"
         )
+        filters = "".join(scene_streams) + overlays
         command.extend(["-filter_complex", filters, "-map", "[video]", "-map", "1:a"])
     else:
         print("Story images unavailable; using motion-graphics fallback", file=sys.stderr)

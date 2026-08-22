@@ -2,13 +2,96 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "AI news short story input",
   "type": "object",
-  "required": ["source_url", "status", "claims", "script", "shots"],
+  "required": [
+    "source_url",
+    "status",
+    "claims",
+    "script",
+    "shots"
+  ],
   "properties": {
-    "source_url": {"type": "string", "format": "uri"},
-    "published_at": {"type": ["string", "null"], "format": "date-time"},
-    "status": {"enum": ["intake", "verified", "ready", "rendered", "approved"]},
-    "claims": {"type": "array", "items": {"type": "object", "required": ["text", "source_url"], "properties": {"text": {"type": "string"}, "source_url": {"type": "string", "format": "uri"}}}},
-    "script": {"type": "array", "items": {"type": "object", "required": ["start", "end", "narration", "caption"], "properties": {"start": {"type": "number"}, "end": {"type": "number"}, "narration": {"type": "string"}, "caption": {"type": "string"}}}},
-    "shots": {"type": "array", "items": {"type": "object"}}
+    "source_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "published_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "intake",
+        "verified",
+        "ready",
+        "rendered",
+        "approved"
+      ]
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "text",
+          "source_url"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string",
+            "format": "uri"
+          }
+        }
+      }
+    },
+    "script": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "narration",
+          "caption"
+        ],
+        "properties": {
+          "start": {
+            "type": "number"
+          },
+          "end": {
+            "type": "number"
+          },
+          "narration": {
+            "type": "string"
+          },
+          "caption": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "subcaption": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "shots": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "voice_pronunciations": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
   }
 }

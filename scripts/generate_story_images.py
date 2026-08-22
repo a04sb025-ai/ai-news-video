@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the two optional story illustrations with the configured provider."""
+"""Generate cached story illustrations with OpenAI's OpenMontage-compatible provider."""
 import base64
 import json
 import os
@@ -11,20 +11,46 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = json.loads((ROOT / "config/image-generation.json").read_text())
-OUTPUT = ROOT / CONFIG["output_directory"]
+OUTPUT = ROOT / CONFIG["output_directory"] / CONFIG["prompt_version"]
+SERIES_STYLE = (
+    "Human-centered editorial illustration for a technology news magazine, with a tactile paper grain, subtle "
+    "dry-brush edges and a restrained cyan, deep navy, muted coral and warm amber palette. Use the same recurring "
+    "Japanese teenage protagonist: asymmetric dark bob haircut, expressive eyebrows, amber overshirt over a navy top. "
+    "Natural facial proportions, individual character, believable hands, editorial lighting, high contrast, one clear "
+    "message and a large human subject. Avoid a generic AI-average face. Reserve a clean dark lower area for video "
+    "captions and keep face, hands and device outside it. No robot, humanoid mascot, cute companion, glowing brain, "
+    "glowing orb, floating tech magic, stock illustration, classroom poster, infographic, corporate explainer, glossy "
+    "3D, plastic skin, clutter, words, letters, numbers, legible UI text, logo, brand mark or watermark. "
+)
 PROMPTS = {
-    "scene-teen-chat.png": (
-        "Use case: illustration-story. Asset type: background illustration for a 9:16 Japanese news short. "
-        "A student around age 13 to 17 uses a laptop at home or in a welcoming study space and asks an AI "
-        "for help learning. Friendly, simple, polished editorial illustration with large readable subjects, warm "
-        "natural expressions, and a clean vertical composition. No words, letters, UI copy, logos, brands, or watermark."
+    "scene-teen-hero.png": (
+        SERIES_STYLE + "Use case: illustration-story. Asset type: 9:16 technology-news cover thumbnail. Chest-up close "
+        "portrait of the protagonist looking at a tablet, with discovery, curiosity and slight surprise in the face. "
+        "Show ChatGPT use only through two or three restrained, blank conversation cards on the device; the human and "
+        "situation—not AI symbolism—carry the image. Place the face large on the right and preserve calm deep-navy "
+        "negative space across the upper-left for the headline. Make it feel commissioned for a news feature, not a "
+        "lesson illustration. No additional person."
     ),
-    "scene-learning-safety.png": (
-        "Use case: scientific-educational. Asset type: background illustration for a 9:16 Japanese news short. "
-        "A teenage student receives useful learning support from an AI while also feeling naturally protected and "
-        "safe. Show a real scene with the student and learning materials; a subtle shield motif may be integrated "
-        "into the environment, but do not make an icon-only screen. Friendly, simple, polished editorial "
-        "illustration, clean vertical composition. No words, letters, logos, brands, or watermark."
+    "scene-teen-thinking.png": (
+        SERIES_STYLE + "Use case: illustration-story. Asset type: 9:16 technology-news editorial scene. The protagonist "
+        "leans over a notebook at a desk, pencil paused, thinking independently and beginning to notice a solution. A "
+        "laptop at the side shows only a short sequence of blank hint cards and a question-shaped layout—not an answer. "
+        "The screen is a quiet coaching tool, never a character. Three-quarter close framing, face and thought process "
+        "dominant, few props, lower third clear. No finished solution and no additional person."
+    ),
+    "scene-teen-safety.png": (
+        SERIES_STYLE + "Use case: illustration-story. Asset type: 9:16 technology-news editorial scene. The protagonist "
+        "uses a laptop with a calm, reassured expression. Communicate an under-18 safety guard through the interface "
+        "composition: an ordinary blank conversation card is gently redirected into a neutral guidance card by a thin "
+        "muted-coral boundary within the screen. Keep all content abstract and harmless. The student—not the guard—is "
+        "the focal point. No danger depiction, warning drama, large shield, police imagery or additional person."
+    ),
+    "scene-teen-healthy-use.png": (
+        SERIES_STYLE + "Use case: illustration-story. Asset type: 9:16 technology-news editorial scene. After using a "
+        "laptop, the protagonist has turned slightly away from the screen, stretches naturally and looks toward daylight. "
+        "The device remains at the edge of the composition with one small blank break-reminder card and a simple circular "
+        "time-progress shape. Show an easy return to everyday life, not a warning. Human life is central and AI is only "
+        "a bounded tool. No heart, romance, friendship symbolism, alarm screen, large clock or additional person."
     ),
 }
 
