@@ -1,4 +1,4 @@
-.PHONY: setup doctor test openmontage-update intake generate-teen-images render render-teen-news qa opening-qa voice-qa
+.PHONY: setup doctor test openmontage-update intake generate-teen-images render render-teen-news qa opening-qa voice-qa review-frames
 setup:
 	./scripts/setup.sh
 doctor:
@@ -25,3 +25,6 @@ opening-qa:
 	python3 scripts/check_opening_frames.py "$(VIDEO)" "$(or $(STORY),config/stories/chatgpt-teens-ja.json)" reports/opening
 voice-qa:
 	python3 scripts/check_story_voice.py "$(or $(STORY),config/stories/chatgpt-teens-ja.json)" reports/voice-script-qa.json
+review-frames:
+	@test -n "$(VIDEO)" || (echo 'Usage: make review-frames VIDEO=dist/news.mp4' >&2; exit 2)
+	python3 scripts/extract_review_frames.py "$(VIDEO)" reports/scenes

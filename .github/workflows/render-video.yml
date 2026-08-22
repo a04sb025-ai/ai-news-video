@@ -43,7 +43,7 @@ jobs:
         if: inputs.render_target == 'teen_chatgpt'
         uses: actions/cache@v4
         with:
-          path: assets/generated/*.png
+          path: assets/generated/**
           key: teen-illustrations-${{ hashFiles('config/image-generation.json', 'scripts/generate_story_images.py') }}
       - name: Generate ChatGPT for Teens illustrations
         if: inputs.render_target == 'teen_chatgpt'
@@ -85,6 +85,9 @@ jobs:
               dist/chatgpt-teens-ja.mp4 config/stories/chatgpt-teens-ja.json reports/opening \
               | tee -a reports/opening-qa.txt
           fi
+      - name: Extract representative illustration review frames
+        if: inputs.render_target == 'teen_chatgpt'
+        run: python3 scripts/extract_review_frames.py dist/chatgpt-teens-ja.mp4 reports/scenes
       - name: Automated QA
         env:
           RENDER_TARGET: ${{ inputs.render_target }}
@@ -128,4 +131,5 @@ jobs:
             reports/**
             work/story.json
             config/stories/chatgpt-teens-ja.json
-            assets/generated/*.png
+            config/image-generation.json
+            assets/generated/**

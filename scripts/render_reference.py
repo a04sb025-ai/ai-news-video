@@ -26,7 +26,9 @@ FPS = 30
 DURATION = story["script"][-1]["end"]
 SAFE_OPENING = os.environ.get("OPENING_SAFE_MODE") == "1"
 PALETTE = ["18213A", "122E3A", "25304A", "111827"]
-ASSET_DIR = Path(__file__).resolve().parents[1] / "assets/generated"
+ROOT = Path(__file__).resolve().parents[1]
+IMAGE_CONFIG = json.loads((ROOT / "config/image-generation.json").read_text())
+ASSET_DIR = ROOT / IMAGE_CONFIG["output_directory"] / IMAGE_CONFIG["prompt_version"]
 STORY_IMAGES = [
     ASSET_DIR / "scene-teen-hero.png",
     ASSET_DIR / "scene-teen-thinking.png",

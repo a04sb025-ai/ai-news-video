@@ -78,9 +78,9 @@ make qa VIDEO=dist/chatgpt-teens-ja.mp4
 
 レンダリング結果は `dist/chatgpt-teens-ja.mp4` に出力されます。字幕は各キュー2行以内・1行18文字以内に収め、0〜3秒のサムネイル兼タイトル、3〜6秒の「つまり、何？」、6〜9秒の「ここが新しい」、9〜12秒の依存対策、12〜14秒の控えめなアウトロで構成しています。表示上の `ChatGPT` は、音声用テキストでは `チャットジーピーティー` に分離しています。恒久的な制作基準は `docs/openmontage-opening-visual-spec.md` にあり、今後の動画も「冒頭3秒＝サムネイル」を既定とします。
 
-GitHub Actionsから実レンダリングする場合は **Actions → Render AI news video → Run workflow** を開き、`render_target` の既定値 `teen_chatgpt` のまま実行します。このモードではURL入力は不要です。完了後、実行画面の **Artifacts** から `ai-news-video-<実行番号>` をダウンロードすると、完成MP4、使用したストーリーJSON、通常QAログ、0.5 / 1.5 / 2.5秒の冒頭PNGと冒頭QA JSON、使用した生成画像を確認できます。従来のURLレンダリングは `generic_url` を選び、`news_url` を入力すると実行できます。
+GitHub Actionsから実レンダリングする場合は **Actions → Render AI news video → Run workflow** を開き、`render_target` の既定値 `teen_chatgpt` のまま実行します。このモードではURL入力は不要です。完了後、実行画面の **Artifacts** から `ai-news-video-<実行番号>` をダウンロードすると、完成MP4、使用したストーリーJSON、通常QAログ、0.5 / 1.5 / 2.5秒の冒頭PNG、4.5 / 7.5 / 10.5秒の本文代表PNG、冒頭QA JSON、イラスト目視チェックリスト、使用した生成画像を確認できます。従来のURLレンダリングは `generic_url` を選び、`news_url` を入力すると実行できます。
 
-ティーン向けモードはOpenMontageのOpenAI画像プロバイダと同じ環境変数規約に合わせ、Repository Secretの`OPENAI_API_KEY`からヒーローを含む4枚のイラストを生成します。キーは設定ファイル、コマンド引数、ログ、Artifactには保存しません。生成済みPNGがあれば再利用し、API障害やSecret未設定時は従来のFFmpegモーショングラフィックスへ自動的にフォールバックします。GitHubの **Settings → Secrets and variables → Actions → New repository secret** でSecretを登録してください。
+ティーン向けモードはOpenMontageのOpenAI画像プロバイダと同じ環境変数規約に合わせ、Repository Secretの`OPENAI_API_KEY`からヒーローを含む4枚のイラストを生成します。画像は `config/image-generation.json` の `prompt_version` ごとのディレクトリへ保存され、版を上げた最初の実行だけ新規生成し、以後は同じ4枚を再利用します。キーは設定ファイル、コマンド引数、ログ、Artifactには保存しません。API障害やSecret未設定時は従来のFFmpegモーショングラフィックスへ自動的にフォールバックします。GitHubの **Settings → Secrets and variables → Actions → New repository secret** でSecretを登録してください。
 
 ## APIキー、外部サービス、費用
 

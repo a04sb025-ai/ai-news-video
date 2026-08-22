@@ -11,36 +11,46 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = json.loads((ROOT / "config/image-generation.json").read_text())
-OUTPUT = ROOT / CONFIG["output_directory"]
+OUTPUT = ROOT / CONFIG["output_directory"] / CONFIG["prompt_version"]
+SERIES_STYLE = (
+    "Human-centered editorial illustration for a technology news magazine, with a tactile paper grain, subtle "
+    "dry-brush edges and a restrained cyan, deep navy, muted coral and warm amber palette. Use the same recurring "
+    "Japanese teenage protagonist: asymmetric dark bob haircut, expressive eyebrows, amber overshirt over a navy top. "
+    "Natural facial proportions, individual character, believable hands, editorial lighting, high contrast, one clear "
+    "message and a large human subject. Avoid a generic AI-average face. Reserve a clean dark lower area for video "
+    "captions and keep face, hands and device outside it. No robot, humanoid mascot, cute companion, glowing brain, "
+    "glowing orb, floating tech magic, stock illustration, classroom poster, infographic, corporate explainer, glossy "
+    "3D, plastic skin, clutter, words, letters, numbers, legible UI text, logo, brand mark or watermark. "
+)
 PROMPTS = {
     "scene-teen-hero.png": (
-        "Use case: illustration-story. Asset type: 9:16 mobile-news thumbnail hero. Premium contemporary editorial "
-        "illustration with one Japanese teenage student as the unmistakable subject; close face, expressive look of "
-        "discovery, interest and slight surprise, using a laptop with an abstract AI chat interface. Compose the face "
-        "large in the lower-right, leaving calm dark negative space at upper-left for a large headline. Strong cyan, "
-        "deep navy and warm amber contrast, cinematic light, sophisticated news-magazine finish, not a textbook image. "
-        "No words, letters, numbers, readable UI, logos, brands, watermark, or extra people."
+        SERIES_STYLE + "Use case: illustration-story. Asset type: 9:16 technology-news cover thumbnail. Chest-up close "
+        "portrait of the protagonist looking at a tablet, with discovery, curiosity and slight surprise in the face. "
+        "Show ChatGPT use only through two or three restrained, blank conversation cards on the device; the human and "
+        "situation—not AI symbolism—carry the image. Place the face large on the right and preserve calm deep-navy "
+        "negative space across the upper-left for the headline. Make it feel commissioned for a news feature, not a "
+        "lesson illustration. No additional person."
     ),
     "scene-teen-thinking.png": (
-        "Use case: illustration-story. Asset type: 9:16 mobile-news scene. In the same cyan, navy and warm amber "
-        "editorial style, a teenage student works through one challenging problem while an AI assistant offers visual "
-        "hint shapes and a questioning gesture instead of giving a finished answer. Show focused thinking and a warm "
-        "coach relationship, face large, one clear focal point. Keep the bottom 32 percent simple and dark for captions. "
-        "No answer sheet, words, letters, numbers, readable UI, logos, brands, watermark, or extra people."
+        SERIES_STYLE + "Use case: illustration-story. Asset type: 9:16 technology-news editorial scene. The protagonist "
+        "leans over a notebook at a desk, pencil paused, thinking independently and beginning to notice a solution. A "
+        "laptop at the side shows only a short sequence of blank hint cards and a question-shaped layout—not an answer. "
+        "The screen is a quiet coaching tool, never a character. Three-quarter close framing, face and thought process "
+        "dominant, few props, lower third clear. No finished solution and no additional person."
     ),
     "scene-teen-safety.png": (
-        "Use case: illustration-story. Asset type: 9:16 mobile-news scene. Same premium editorial series style. A "
-        "teenage student uses an AI learning assistant calmly while a subtle luminous protective boundary filters out "
-        "unidentifiable noisy shapes in the distant background. Communicate safety without depicting harm or an "
-        "icon-only shield. Face large, reassuring expression, clean lower caption area. No dangerous acts, words, "
-        "letters, numbers, readable UI, logos, brands, or watermark."
+        SERIES_STYLE + "Use case: illustration-story. Asset type: 9:16 technology-news editorial scene. The protagonist "
+        "uses a laptop with a calm, reassured expression. Communicate an under-18 safety guard through the interface "
+        "composition: an ordinary blank conversation card is gently redirected into a neutral guidance card by a thin "
+        "muted-coral boundary within the screen. Keep all content abstract and harmless. The student—not the guard—is "
+        "the focal point. No danger depiction, warning drama, large shield, police imagery or additional person."
     ),
     "scene-teen-healthy-use.png": (
-        "Use case: illustration-story. Asset type: 9:16 mobile-news scene. Same premium editorial series style. A "
-        "teenage student takes a healthy break beside a closed laptop, looking toward daylight, with a simple analog "
-        "clock and study materials suggesting time management. The AI remains clearly a useful tool at a respectful "
-        "distance, never a romantic companion. Face large, balanced calm mood, clean lower caption area. No words, "
-        "letters, numbers, readable UI, romance, logos, brands, or watermark."
+        SERIES_STYLE + "Use case: illustration-story. Asset type: 9:16 technology-news editorial scene. After using a "
+        "laptop, the protagonist has turned slightly away from the screen, stretches naturally and looks toward daylight. "
+        "The device remains at the edge of the composition with one small blank break-reminder card and a simple circular "
+        "time-progress shape. Show an easy return to everyday life, not a warning. Human life is central and AI is only "
+        "a bounded tool. No heart, romance, friendship symbolism, alarm screen, large clock or additional person."
     ),
 }
 
