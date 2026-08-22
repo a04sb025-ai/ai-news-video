@@ -18,7 +18,7 @@ checks = {
 if "request_id" not in story:
     checks["headline_is_present"] = bool(opening["caption"].strip())
 else:
-    checks["headline_matches_verified_story"] = opening["caption"] in story["claims"][0]["text"]
+    checks["headline_matches_verified_story"] = opening["caption"].replace("\n", "") == story["claims"][0]["text"]
 frames = []
 for seconds in (0.5, 1.5, 2.5):
     stem = f"opening-{seconds:.1f}s"

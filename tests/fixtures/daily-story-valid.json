@@ -1,0 +1,11 @@
+{
+  "request_id": "2026-08-23-openai-example",
+  "news_key": "openai-example",
+  "source_url": "https://openai.com/news/example",
+  "article_url": "https://aitoolwatch.jp/articles/example",
+  "headline": "新しいAI機能を発表",
+  "hook": "新しいAI機能が発表されました。",
+  "summary": "仕事の流れを短くできます。",
+  "points": ["既存製品へ追加されます。", "利用者が設定できます。"],
+  "narration_terms": {"AI": "エーアイ"}
+}

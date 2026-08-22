@@ -50,12 +50,13 @@ jobs:
           python3 scripts/daily_story.py prepare work/daily/dispatch-payload.json work/daily
           test "$DISPATCH_REQUEST_ID" = "$(python3 -c 'import json; print(json.load(open("work/daily/source-payload.json"))["request_id"])')" || { echo 'request_id input/payload mismatch' >&2; exit 2; }
           echo "VIDEO_FILE=$(cat work/daily/video-filename.txt)" >> "$GITHUB_ENV"
+          echo "CONTENT_HASH=$(python3 -c 'import json; print(json.load(open("work/daily/story.json"))["content_hash"])')" >> "$GITHUB_ENV"
       - name: Restore generated illustration cache
         if: inputs.render_target == 'teen_chatgpt' || inputs.render_target == 'daily_story'
         uses: actions/cache@v4
         with:
           path: assets/generated/**
-          key: illustrations-${{ inputs.render_target }}-${{ inputs.request_id }}-${{ hashFiles('config/image-generation.json', 'scripts/generate_story_images.py') }}
+          key: illustrations-${{ inputs.render_target }}-${{ inputs.request_id }}-${{ env.CONTENT_HASH }}-${{ hashFiles('config/image-generation.json', 'scripts/generate_story_images.py') }}
       - name: Generate editorial illustrations
         if: inputs.render_target == 'teen_chatgpt' || inputs.render_target == 'daily_story'
         continue-on-error: true
@@ -109,6 +110,7 @@ jobs:
           retention-days: 14
           path: |
             dist/*.mp4
+            dist/*.render.json
             reports/**
             work/story.json
             work/daily/**

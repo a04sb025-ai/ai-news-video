@@ -1,0 +1,48 @@
+name: Pull request CI
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  offline-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Unit and static checks
+        run: |
+          make test
+          python3 -m py_compile scripts/*.py tests/*.py
+          git diff --check "${{ github.event.pull_request.base.sha }}"
+      - name: Install free fallback-render dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk open-jtalk open-jtalk-mecab-naist-jdic hts-voice-nitech-jp-atr503-m001
+      - name: Validate and fallback-render daily fixture without API access
+        env:
+          OPENAI_API_KEY: ''
+        run: |
+          mkdir -p work/ci dist reports
+          python3 scripts/daily_story.py prepare tests/fixtures/daily-story-valid.json work/ci
+          set +e
+          python3 scripts/generate_story_images.py work/ci/story.json | tee reports/image-generation.txt
+          image_status=${PIPESTATUS[0]}
+          set -e
+          test "$image_status" -eq 2
+          VIDEO="dist/$(cat work/ci/video-filename.txt)"
+          python3 scripts/check_story_voice.py work/ci/story.json reports/voice-script-qa.json | tee reports/voice-script-qa.txt
+          python3 scripts/render_reference.py work/ci/story.json "$VIDEO"
+          python3 scripts/check_opening_frames.py "$VIDEO" work/ci/story.json reports/opening | tee reports/opening-qa.txt
+          python3 scripts/check_video.py "$VIDEO" | tee reports/qa.txt
+          ffmpeg -v error -i "$VIDEO" -f null - 2> reports/decode-errors.txt
+          ffmpeg -i "$VIDEO" -vf blackdetect=d=0.3 -an -f null - 2> reports/blackdetect.txt
+          python3 scripts/write_automation_result.py work/ci/story.json "$VIDEO" reports reports/automation-result.json
+          python3 - <<'PY'
+          import json
+          result=json.load(open('reports/automation-result.json'))
+          assert result['success'] is True
+          assert result['auto_publish_ready'] is False
+          assert result['used_generated_images'] is False
+          PY

@@ -122,8 +122,8 @@ Actions の `render_target=daily_story` に、安全な `request_id` と以下�
 {"request_id":"2026-08-23-openai-example","news_key":"...","source_url":"https://公式一次情報.example/news","article_url":"https://aitoolwatch.jp/articles/...","headline":"...","hook":"...","summary":"...","points":["...","..."],"narration_terms":{"ChatGPT":"チャットジーピーティー"}}
 ```
 
-`source_url` / `article_url` はHTTPS、一次情報は記事URLと別ホスト、`points` は2〜3件です。文字数上限は headline 80、hook 120、summary 240、各point 160文字です。不正JSONや危険なrequest IDはレンダー前に失敗します。動画側は渡された値だけから役割別の台本と画像プロンプトを作り、事実を補いません。
+`source_url` / `article_url` はHTTPS、一次情報は記事URLと別ホスト、`points` は2〜3件です。文字数上限は headline 80、hook 120、summary 240、各point 160文字です。不正JSONや危険なrequest IDはレンダー前に失敗します。captionは1行18文字を目安に、入力内の句読点など安全な意味境界でのみ最大2行へ改行します。途中切断や意味の書き換えはせず、安全に収まらない場合はAI Tool Watch側へ短い入力を要求するvalidation errorになります。動画側は渡された値だけから役割別の台本と画像プロンプトを作り、事実を補いません。
 
-画像は1 run最大4枚で、`assets/generated/<request_id>/daily-editorial-v1/` にキャッシュします。同じrequest IDとprompt versionの既存画像は再生成しません。APIは再試行せず、失敗時もモーショングラフィックスで技術的レンダーを続行しますが `auto_publish_ready` は false です。出力名は canonical payload のSHA-256先頭12桁を含む `<request_id>-<hash>.mp4` なので、同じ内容は同名、変更時は別名になります。
+画像は1 run最大4枚で、`assets/generated/<request_id>/<content_hash>/daily-editorial-v1/` にキャッシュします。同じrequest ID・canonical payload由来のcontent hash・prompt versionの既存画像は再生成しません。payloadが変われば同じrequest IDでも別directoryとなり、古い画像は利用しません。APIは再試行せず、失敗時もモーショングラフィックスで技術的レンダーを続行しますが `auto_publish_ready` は false です。出力名は canonical payload のSHA-256先頭12桁を含む `<request_id>-<hash>.mp4` なので、同じ内容は同名、変更時は別名になります。
 
-Artifact の `reports/automation-result.json` が呼び出し側の判定の正本です。validation、MP4、尺・解像度・音声、decode、黒画面、冒頭レイアウトと3フレーム、voice script、25 MiB以下を `qa` に記録し、すべて成功した `success` に加えて4枚の生成画像を実使用した場合だけ `auto_publish_ready: true` になります。Artifactにはsource payload、変換後story、画像と生成ログ、完成MP4、冒頭/本文frames、全QAも収録します。
+Artifact の `reports/automation-result.json` が呼び出し側の判定の正本です。validation、MP4、尺・解像度・音声、decode、黒画面、冒頭レイアウトと3フレーム、voice script、25 MiB以下を `qa` に記録し、すべて成功した `success` に加えてcurrent content hashの4枚が非空で揃い、completeな生成logとrenderer usage manifestが一致して実使用された場合だけ `auto_publish_ready: true` になります。Artifactにはsource payload、変換後story、画像と生成ログ、完成MP4、冒頭/本文frames、全QAも収録します。

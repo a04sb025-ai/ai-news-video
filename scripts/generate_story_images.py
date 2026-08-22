@@ -21,10 +21,11 @@ TEEN = {
 
 def story_prompts(path):
     story = json.loads(path.read_text())
-    roles = [shot["visual"] for shot in story["shots"][:4]]
-    claims = [claim["text"] for claim in story["claims"]]
-    context = " Verified brief: " + " / ".join(claims)
-    prompts = {name: COMMON + f" Scene role: {role}." + context for name, role in zip(story["image_assets"], roles)}
+    scenes = story["image_scenes"]
+    prompts = {
+        name: COMMON + f" Scene role: {scene['role']}. Depict only this verified scene context: {scene['verified_content']}"
+        for name, scene in zip(story["image_assets"], scenes)
+    }
     return ROOT / story["image_asset_dir"], prompts
 
 def generate(destination, prompt, api_key):
@@ -52,7 +53,9 @@ def main():
         prompts = {name: COMMON + detail for name, detail in TEEN.items()}
     if len(prompts) > 4: raise SystemExit("image budget exceeded: maximum is 4")
     output.mkdir(parents=True, exist_ok=True)
-    log = {"prompt_version": "daily-editorial-v1" if len(sys.argv) == 2 else CONFIG["prompt_version"], "maximum": 4, "images": []}
+    log = {"prompt_version": "daily-editorial-v1" if len(sys.argv) == 2 else CONFIG["prompt_version"],
+           "content_hash": json.loads(Path(sys.argv[1]).read_text()).get("content_hash") if len(sys.argv) == 2 else None,
+           "maximum": 4, "expected_images": list(prompts), "images": []}
     key = os.environ.get(CONFIG["api_key_env"])
     if not key:
         log["status"] = "fallback"; log["reason"] = f"{CONFIG['api_key_env']} not configured"

@@ -52,20 +52,40 @@ def canonical(payload):
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+def content_hash(payload):
+    """Return the single hash identity used by video and illustration caches."""
+    return hashlib.sha256(canonical(payload).encode()).hexdigest()[:12]
+
+
 def filename(payload):
-    digest = hashlib.sha256(canonical(payload).encode()).hexdigest()[:12]
-    return f"{payload['request_id']}-{digest}.mp4"
+    return f"{payload['request_id']}-{content_hash(payload)}.mp4"
 
 
-def shorten(text, limit=18):
+INCOMPLETE_ENDINGS = ("向けに", "ために", "について", "として", "に", "へ", "の", "と", "を", "が", "は", "で")
+BREAK_AFTER = ("。", "！", "？", "、", "：", ":", "—", "・")
+
+
+def caption(text, limit=18):
+    """Keep meaning intact; only insert a line break at an authored boundary."""
     text = " ".join(text.split())
+    if not text or len(text) > limit * 2:
+        raise ValueError("caption must be complete and at most 36 characters; provide a shorter caption upstream")
+    if text.endswith(INCOMPLETE_ENDINGS):
+        raise ValueError("caption ends with an incomplete phrase; provide a complete shorter caption upstream")
     if len(text) <= limit:
         return text
-    for separator in ("。", "、", "：", ":", "—", "-"):
-        first = text.split(separator, 1)[0]
-        if 4 <= len(first) <= limit:
-            return first
-    return text[:limit]
+    candidates = []
+    for index, character in enumerate(text[:-1], 1):
+        if character in BREAK_AFTER or character.isspace():
+            left, right = text[:index].rstrip(), text[index:].lstrip()
+            if left and right and len(left) <= limit and len(right) <= limit:
+                candidates.append((abs(len(left) - len(right)), -len(left), left, right))
+    if not candidates:
+        raise ValueError("caption cannot be split at a safe meaning boundary; provide a shorter caption upstream")
+    _, _, left, right = min(candidates)
+    if left.endswith(INCOMPLETE_ENDINGS):
+        raise ValueError("caption line would end with an incomplete phrase; provide a shorter caption upstream")
+    return left + "\n" + right
 
 
 def speak(text, terms):
@@ -77,15 +97,16 @@ def speak(text, terms):
 def build_story(payload):
     terms = payload.get("narration_terms", {})
     points = payload["points"]
-    captions = [shorten(payload["headline"]), shorten(payload["summary"]), shorten(points[0]), shorten(points[1])]
+    captions = [caption(payload["headline"]), caption(payload["summary"]), caption(points[0]), caption(points[1])]
     narrations = [payload["hook"], payload["summary"], points[0], points[1] if len(points) == 2 else f"{points[1]}。{points[2]}"]
     labels = ["AI NEWS", "つまり、何？", "ここが新しい", "さらに"]
     script = [{"start": i * 3.0, "end": (i + 1) * 3.0, "label": labels[i],
                "caption": captions[i], "narration": speak(narrations[i], terms)} for i in range(4)]
     script.append({"start": 12.0, "end": 14.0, "label": "AIニュース速報",
                    "caption": "AIツールウォッチ", "narration": "エーアイツールウォッチ。"})
+    digest = content_hash(payload)
     return {
-        "request_id": payload["request_id"], "source_url": payload["source_url"],
+        "request_id": payload["request_id"], "content_hash": digest, "source_url": payload["source_url"],
         "article_url": payload["article_url"], "status": "ready", "voice_pronunciations": terms,
         "claims": [{"text": value, "source_url": payload["source_url"]}
                    for value in [payload["headline"], payload["hook"], payload["summary"], *points]],
@@ -93,8 +114,14 @@ def build_story(payload):
         "shots": [{"start": i * 3.0, "end": (i + 1) * 3.0,
                    "visual": role} for i, role in enumerate(("何が起きた", "つまり何", "何が新しい", "視聴者に重要な追加点"))]
                  + [{"start": 12.0, "end": 14.0, "visual": "控えめなアウトロ"}],
-        "image_asset_dir": f"assets/generated/{payload['request_id']}/daily-editorial-v1",
+        "image_asset_dir": f"assets/generated/{payload['request_id']}/{digest}/daily-editorial-v1",
         "image_assets": [f"scene-{i}.png" for i in range(1, 5)],
+        "image_scenes": [
+            {"role": "何が起きた", "verified_content": f"{payload['headline']} / {payload['hook']}"},
+            {"role": "つまり何", "verified_content": payload["summary"]},
+            {"role": "ここが新しい", "verified_content": points[0]},
+            {"role": "追加の重要ポイント", "verified_content": " / ".join(points[1:])},
+        ],
     }
 
 
@@ -106,9 +133,13 @@ def main():
         payload = validate(json.loads(source.read_text()))
     except (OSError, json.JSONDecodeError, ValueError) as error:
         raise SystemExit(f"invalid story_payload: {error}")
+    try:
+        story = build_story(payload)
+    except ValueError as error:
+        raise SystemExit(f"invalid story_payload captions: {error}")
     output.mkdir(parents=True, exist_ok=True)
     (output / "source-payload.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
-    (output / "story.json").write_text(json.dumps(build_story(payload), ensure_ascii=False, indent=2) + "\n")
+    (output / "story.json").write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n")
     (output / "video-filename.txt").write_text(filename(payload) + "\n")
     print(filename(payload))
 
