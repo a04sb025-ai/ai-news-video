@@ -9,6 +9,8 @@ dist/*
 !dist/.gitkeep
 reports/*
 !reports/.gitkeep
+assets/generated/*
+!assets/generated/.gitkeep
 *.mp4
 *.wav
 *.mp3

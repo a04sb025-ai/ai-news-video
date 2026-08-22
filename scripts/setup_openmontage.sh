@@ -6,6 +6,12 @@ OM="${OPENMONTAGE_DIR:-$ROOT/vendor/openmontage}"
 for doc in README.md CODEX.md AGENT_GUIDE.md PROJECT_CONTEXT.md; do
   test -s "$OM/$doc" || { echo "Missing required OpenMontage document: $doc" >&2; exit 1; }
 done
+provider_guide="$(find "$OM" -maxdepth 4 -type f \( -iname 'provider-guide.md' -o -iname 'provider_guide.md' -o -iname '*provider*guide*.md' \) -print -quit)"
+if [[ -z "$provider_guide" ]]; then
+  echo "OpenMontage Provider Guide was not found; refusing provider setup" >&2
+  exit 1
+fi
+echo "Provider guide: ${provider_guide#"$OM/"}"
 if [[ -f "$OM/pnpm-lock.yaml" ]]; then
   corepack enable
   (cd "$OM" && pnpm install --frozen-lockfile)
@@ -23,5 +29,5 @@ fi
 {
   echo "commit=$(git -C "$OM" rev-parse HEAD)"
   for doc in README.md CODEX.md AGENT_GUIDE.md PROJECT_CONTEXT.md; do sha256sum "$OM/$doc"; done
+  sha256sum "$provider_guide"
 } | tee "$ROOT/reports/openmontage.txt"
-

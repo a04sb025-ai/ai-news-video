@@ -1,4 +1,4 @@
-.PHONY: setup doctor test openmontage-update intake render qa
+.PHONY: setup doctor test openmontage-update intake generate-teen-images render render-teen-news qa
 setup:
 	./scripts/setup.sh
 doctor:
@@ -13,6 +13,10 @@ intake:
 render:
 	@test -n "$(STORY)" || (echo 'Usage: make render STORY=work/story.json' >&2; exit 2)
 	python3 scripts/render_reference.py "$(STORY)" "$(or $(VIDEO),dist/news.mp4)"
+generate-teen-images:
+	python3 scripts/generate_story_images.py
+render-teen-news:
+	python3 scripts/render_reference.py config/stories/chatgpt-teens-ja.json "$(or $(VIDEO),dist/chatgpt-teens-ja.mp4)"
 qa:
 	@test -n "$(VIDEO)" || (echo 'Usage: make qa VIDEO=dist/news.mp4' >&2; exit 2)
 	python3 scripts/check_video.py "$(VIDEO)"

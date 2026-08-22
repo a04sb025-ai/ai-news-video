@@ -2,9 +2,17 @@ name: Render AI news video
 on:
   workflow_dispatch:
     inputs:
-      news_url:
-        description: Official or primary-source AI news URL
+      render_target:
+        description: Video to render
         required: true
+        default: teen_chatgpt
+        type: choice
+        options:
+          - teen_chatgpt
+          - generic_url
+      news_url:
+        description: Official URL (required only for generic_url)
+        required: false
         type: string
       headline:
         description: Optional verified Japanese headline (used if the page blocks retrieval)
@@ -30,20 +38,46 @@ jobs:
         run: |
           ./scripts/openmontage.sh install
           ./scripts/setup_openmontage.sh
+      - name: Restore generated illustration cache
+        if: inputs.render_target == 'teen_chatgpt'
+        uses: actions/cache@v4
+        with:
+          path: assets/generated/*.png
+          key: teen-illustrations-${{ hashFiles('config/image-generation.json', 'scripts/generate_story_images.py') }}
+      - name: Generate ChatGPT for Teens illustrations
+        if: inputs.render_target == 'teen_chatgpt'
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: make generate-teen-images 2>&1 | tee reports/image-generation.txt
       - name: Prepare URL input
+        if: inputs.render_target == 'generic_url'
         env:
           NEWS_URL: ${{ inputs.news_url }}
           HEADLINE: ${{ inputs.headline }}
-        run: python3 scripts/prepare_story.py "$NEWS_URL" work/story.json "$HEADLINE"
-      - name: Render 12-second reference video
-        run: python3 scripts/render_reference.py work/story.json dist/ai-news.mp4
-      - name: Automated QA
         run: |
-          python3 scripts/check_video.py dist/ai-news.mp4 | tee reports/qa.txt
-          ffmpeg -v error -i dist/ai-news.mp4 -f null - 2> reports/decode-errors.txt
-          ffmpeg -i dist/ai-news.mp4 -vf blackdetect=d=0.3 -an -f null - 2> reports/blackdetect.txt
-          ffmpeg -i dist/ai-news.mp4 -vf freezedetect=n=-50dB:d=1 -an -f null - 2> reports/freezedetect.txt
-          ffmpeg -i dist/ai-news.mp4 -af loudnorm=print_format=json -f null - 2> reports/loudness.txt
+          test -n "$NEWS_URL" || { echo "news_url is required for generic_url" >&2; exit 2; }
+          python3 scripts/prepare_story.py "$NEWS_URL" work/story.json "$HEADLINE"
+      - name: Render generic 12-second reference video
+        if: inputs.render_target == 'generic_url'
+        run: python3 scripts/render_reference.py work/story.json dist/ai-news.mp4
+      - name: Render ChatGPT for Teens video
+        if: inputs.render_target == 'teen_chatgpt'
+        run: make render-teen-news
+      - name: Automated QA
+        env:
+          RENDER_TARGET: ${{ inputs.render_target }}
+        run: |
+          if [[ "$RENDER_TARGET" == "teen_chatgpt" ]]; then
+            VIDEO=dist/chatgpt-teens-ja.mp4
+          else
+            VIDEO=dist/ai-news.mp4
+          fi
+          python3 scripts/check_video.py "$VIDEO" | tee reports/qa.txt
+          ffmpeg -v error -i "$VIDEO" -f null - 2> reports/decode-errors.txt
+          ffmpeg -i "$VIDEO" -vf blackdetect=d=0.3 -an -f null - 2> reports/blackdetect.txt
+          ffmpeg -i "$VIDEO" -vf freezedetect=n=-50dB:d=1 -an -f null - 2> reports/freezedetect.txt
+          ffmpeg -i "$VIDEO" -af loudnorm=print_format=json -f null - 2> reports/loudness.txt
       - name: Upload video and QA evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -55,4 +89,5 @@ jobs:
             dist/*.mp4
             reports/**
             work/story.json
-
+            config/stories/chatgpt-teens-ja.json
+            assets/generated/*.png
