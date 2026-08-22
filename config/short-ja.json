@@ -1,9 +1,79 @@
 {
   "project": "AIツールウォッチ",
   "language": "ja-JP",
-  "canvas": {"width": 1080, "height": 1920, "fps": 30},
-  "duration_seconds": {"min": 10, "max": 15},
-  "editorial": {"hook_deadline_seconds": 3, "one_story_per_video": true, "prefer_primary_sources": true, "prohibit_exaggeration": true, "label_inference": true},
-  "captions": {"max_chars_per_cue": 18, "max_lines": 2, "safe_margin_px": {"horizontal": 90, "top": 160, "bottom": 260}},
-  "outro": {"text": "AIツールウォッチ", "duration_seconds": 1.2}
+  "canvas": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30
+  },
+  "duration_seconds": {
+    "min": 10,
+    "max": 15
+  },
+  "editorial": {
+    "hook_deadline_seconds": 3,
+    "one_story_per_video": true,
+    "prefer_primary_sources": true,
+    "prohibit_exaggeration": true,
+    "label_inference": true
+  },
+  "opening_hook": {
+    "window_seconds": {
+      "start": 0,
+      "end": 3
+    },
+    "thumbnail_grade_required": true,
+    "goal": "冒頭3秒だけを静止画として見ても、ニュースの要点とインパクトが伝わること",
+    "requirements": {
+      "understandable_without_audio": true,
+      "topic_clear_at_a_glance": true,
+      "core_point_clear_at_a_glance": true,
+      "phone_readable_while_scrolling": true,
+      "one_screen_one_message": true,
+      "large_headline": true,
+      "high_contrast": true,
+      "prefer_clear_subject_image": true,
+      "prefer_hook_elements": [
+        "number",
+        "conclusion",
+        "question"
+      ]
+    },
+    "avoid": [
+      "small_body_copy",
+      "multiple_competing_messages",
+      "slow_context_before_the_point",
+      "audio_dependent_hook",
+      "sensational_claims_not_supported_by_sources"
+    ]
+  },
+  "captions": {
+    "max_chars_per_cue": 18,
+    "max_lines": 2,
+    "safe_margin_px": {
+      "horizontal": 90,
+      "top": 160,
+      "bottom": 260
+    }
+  },
+  "qa": {
+    "extract_opening_frames": true,
+    "opening_frame_sample_seconds": [
+      0.5,
+      1.5,
+      2.5
+    ],
+    "opening_review_required": [
+      "phone_readability",
+      "topic_clarity",
+      "core_point_clarity",
+      "visual_impact",
+      "works_without_audio"
+    ],
+    "auto_fix_and_rerender_on_failure": true
+  },
+  "outro": {
+    "text": "AIツールウォッチ",
+    "duration_seconds": 1.2
+  }
 }
