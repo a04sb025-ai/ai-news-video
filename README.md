@@ -111,3 +111,19 @@ reports/                # QA記録（追跡対象外）
 ## 次にすること
 
 セットアップ済み環境で、動画化したいニュースのURLを1件渡してください。可能なら公式発表または一次情報のURLを選んでください。こちらで根拠を確認し、短い脚本とストーリーボードを提示してから、最初のレンダリングとQAに進みます。
+
+## Daily automated story mode
+
+AI Tool Watch が検証した brief を正本として、`daily_story` は任意のAIニュースを約14秒・5シーン（何が起きた／つまり何／何が新しい／重要な追加点／控えめなアウトロ）へ変換します。`generic_url` は従来どおりURLタイトルを使うリファレンスであり、高品質な自動要約用途には使いません。`teen_chatgpt` は完成サンプルと回帰テストとして維持します。
+
+Actions の `render_target=daily_story` に、安全な `request_id` と以下の `story_payload` JSON文字列を渡します。両方のrequest IDは一致必須です。
+
+```json
+{"request_id":"2026-08-23-openai-example","news_key":"...","source_url":"https://公式一次情報.example/news","article_url":"https://aitoolwatch.jp/articles/...","headline":"...","hook":"...","summary":"...","points":["...","..."],"narration_terms":{"ChatGPT":"チャットジーピーティー"}}
+```
+
+`source_url` / `article_url` はHTTPS、一次情報は記事URLと別ホスト、`points` は2〜3件です。文字数上限は headline 80、hook 120、summary 240、各point 160文字です。不正JSONや危険なrequest IDはレンダー前に失敗します。動画側は渡された値だけから役割別の台本と画像プロンプトを作り、事実を補いません。
+
+画像は1 run最大4枚で、`assets/generated/<request_id>/daily-editorial-v1/` にキャッシュします。同じrequest IDとprompt versionの既存画像は再生成しません。APIは再試行せず、失敗時もモーショングラフィックスで技術的レンダーを続行しますが `auto_publish_ready` は false です。出力名は canonical payload のSHA-256先頭12桁を含む `<request_id>-<hash>.mp4` なので、同じ内容は同名、変更時は別名になります。
+
+Artifact の `reports/automation-result.json` が呼び出し側の判定の正本です。validation、MP4、尺・解像度・音声、decode、黒画面、冒頭レイアウトと3フレーム、voice script、25 MiB以下を `qa` に記録し、すべて成功した `success` に加えて4枚の生成画像を実使用した場合だけ `auto_publish_ready: true` になります。Artifactにはsource payload、変換後story、画像と生成ログ、完成MP4、冒頭/本文frames、全QAも収録します。

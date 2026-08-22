@@ -28,13 +28,10 @@ SAFE_OPENING = os.environ.get("OPENING_SAFE_MODE") == "1"
 PALETTE = ["18213A", "122E3A", "25304A", "111827"]
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE_CONFIG = json.loads((ROOT / "config/image-generation.json").read_text())
-ASSET_DIR = ROOT / IMAGE_CONFIG["output_directory"] / IMAGE_CONFIG["prompt_version"]
-STORY_IMAGES = [
-    ASSET_DIR / "scene-teen-hero.png",
-    ASSET_DIR / "scene-teen-thinking.png",
-    ASSET_DIR / "scene-teen-safety.png",
-    ASSET_DIR / "scene-teen-healthy-use.png",
-]
+ASSET_DIR = ROOT / story.get("image_asset_dir", str(Path(IMAGE_CONFIG["output_directory"]) / IMAGE_CONFIG["prompt_version"]))
+STORY_IMAGES = [ASSET_DIR / name for name in story.get("image_assets", [
+    "scene-teen-hero.png", "scene-teen-thinking.png", "scene-teen-safety.png", "scene-teen-healthy-use.png",
+])]
 USE_STORY_IMAGES = all(image.is_file() and image.stat().st_size > 0 for image in STORY_IMAGES)
 
 

@@ -1,4 +1,5 @@
 name: Render AI news video
+run-name: ${{ inputs.render_target == 'daily_story' && format('Daily AI news video / {0}', inputs.request_id) || format('AI news video / {0}', inputs.render_target) }}
 on:
   workflow_dispatch:
     inputs:
@@ -7,21 +8,24 @@ on:
         required: true
         default: teen_chatgpt
         type: choice
-        options:
-          - teen_chatgpt
-          - generic_url
+        options: [teen_chatgpt, daily_story, generic_url]
+      request_id:
+        description: Safe caller ID (required for daily_story and must match payload)
+        required: false
+        type: string
+      story_payload:
+        description: Verified AI Tool Watch JSON brief (required for daily_story)
+        required: false
+        type: string
       news_url:
-        description: Official URL (required only for generic_url)
+        description: Official URL (generic_url only)
         required: false
         type: string
       headline:
-        description: Optional verified Japanese headline (used if the page blocks retrieval)
+        description: Optional verified headline (generic_url only)
         required: false
         type: string
-
-permissions:
-  contents: read
-
+permissions: {contents: read}
 jobs:
   render:
     runs-on: ubuntu-24.04
@@ -32,104 +36,82 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg fonts-noto-cjk open-jtalk open-jtalk-mecab-naist-jdic hts-voice-nitech-jp-atr503-m001
-          ffmpeg -version | head -1
-          ffprobe -version | head -1
       - name: Fetch and validate latest OpenMontage
         if: inputs.render_target == 'generic_url'
+        run: ./scripts/openmontage.sh install && ./scripts/setup_openmontage.sh
+      - name: Prepare daily verified brief safely
+        if: inputs.render_target == 'daily_story'
+        env:
+          STORY_PAYLOAD: ${{ inputs.story_payload }}
+          DISPATCH_REQUEST_ID: ${{ inputs.request_id }}
         run: |
-          ./scripts/openmontage.sh install
-          ./scripts/setup_openmontage.sh
+          mkdir -p work/daily reports
+          printf '%s' "$STORY_PAYLOAD" > work/daily/dispatch-payload.json
+          python3 scripts/daily_story.py prepare work/daily/dispatch-payload.json work/daily
+          test "$DISPATCH_REQUEST_ID" = "$(python3 -c 'import json; print(json.load(open("work/daily/source-payload.json"))["request_id"])')" || { echo 'request_id input/payload mismatch' >&2; exit 2; }
+          echo "VIDEO_FILE=$(cat work/daily/video-filename.txt)" >> "$GITHUB_ENV"
       - name: Restore generated illustration cache
-        if: inputs.render_target == 'teen_chatgpt'
+        if: inputs.render_target == 'teen_chatgpt' || inputs.render_target == 'daily_story'
         uses: actions/cache@v4
         with:
           path: assets/generated/**
-          key: teen-illustrations-${{ hashFiles('config/image-generation.json', 'scripts/generate_story_images.py') }}
-      - name: Generate ChatGPT for Teens illustrations
-        if: inputs.render_target == 'teen_chatgpt'
+          key: illustrations-${{ inputs.render_target }}-${{ inputs.request_id }}-${{ hashFiles('config/image-generation.json', 'scripts/generate_story_images.py') }}
+      - name: Generate editorial illustrations
+        if: inputs.render_target == 'teen_chatgpt' || inputs.render_target == 'daily_story'
         continue-on-error: true
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: make generate-teen-images 2>&1 | tee reports/image-generation.txt
-      - name: Prepare URL input
-        if: inputs.render_target == 'generic_url'
-        env:
-          NEWS_URL: ${{ inputs.news_url }}
-          HEADLINE: ${{ inputs.headline }}
         run: |
-          test -n "$NEWS_URL" || { echo "news_url is required for generic_url" >&2; exit 2; }
+          mkdir -p reports
+          if [[ "${{ inputs.render_target }}" == daily_story ]]; then python3 scripts/generate_story_images.py work/daily/story.json; else make generate-teen-images; fi 2>&1 | tee reports/image-generation.txt
+      - name: Prepare and render generic URL
+        if: inputs.render_target == 'generic_url'
+        env: {NEWS_URL: "${{ inputs.news_url }}", HEADLINE: "${{ inputs.headline }}"}
+        run: |
+          test -n "$NEWS_URL" || exit 2
           python3 scripts/prepare_story.py "$NEWS_URL" work/story.json "$HEADLINE"
-      - name: Render generic 12-second reference video
-        if: inputs.render_target == 'generic_url'
-        run: python3 scripts/render_reference.py work/story.json dist/ai-news.mp4
-      - name: Render ChatGPT for Teens video
-        if: inputs.render_target == 'teen_chatgpt'
+          python3 scripts/render_reference.py work/story.json dist/ai-news.mp4
+      - name: Render structured story
+        if: inputs.render_target != 'generic_url'
         run: |
-          python3 scripts/check_story_voice.py \
-            config/stories/chatgpt-teens-ja.json reports/voice-script-qa.json \
-            | tee reports/voice-script-qa.txt
-          make render-teen-news
-      - name: Opening thumbnail QA and one automatic correction pass
-        if: inputs.render_target == 'teen_chatgpt'
-        run: |
-          set +e
-          python3 scripts/check_opening_frames.py \
-            dist/chatgpt-teens-ja.mp4 config/stories/chatgpt-teens-ja.json reports/opening \
-            | tee reports/opening-qa.txt
-          status=${PIPESTATUS[0]}
-          set -e
-          if [[ "$status" -ne 0 ]]; then
-            echo "Opening QA failed; strengthening the headline panel and re-rendering once" | tee -a reports/opening-qa.txt
-            OPENING_SAFE_MODE=1 make render-teen-news
-            python3 scripts/check_opening_frames.py \
-              dist/chatgpt-teens-ja.mp4 config/stories/chatgpt-teens-ja.json reports/opening \
-              | tee -a reports/opening-qa.txt
-          fi
-      - name: Extract representative illustration review frames
-        if: inputs.render_target == 'teen_chatgpt'
-        run: python3 scripts/extract_review_frames.py dist/chatgpt-teens-ja.mp4 reports/scenes
-      - name: Automated QA
-        env:
-          RENDER_TARGET: ${{ inputs.render_target }}
-        run: |
-          if [[ "$RENDER_TARGET" == "teen_chatgpt" ]]; then
-            VIDEO=dist/chatgpt-teens-ja.mp4
+          mkdir -p dist reports
+          if [[ "${{ inputs.render_target }}" == daily_story ]]; then
+            python3 scripts/check_story_voice.py work/daily/story.json reports/voice-script-qa.json | tee reports/voice-script-qa.txt
+            python3 scripts/render_reference.py work/daily/story.json "dist/$VIDEO_FILE"
           else
-            VIDEO=dist/ai-news.mp4
+            python3 scripts/check_story_voice.py config/stories/chatgpt-teens-ja.json reports/voice-script-qa.json | tee reports/voice-script-qa.txt
+            make render-teen-news
           fi
+      - name: Opening and scene QA
+        if: inputs.render_target != 'generic_url'
+        run: |
+          if [[ "${{ inputs.render_target }}" == daily_story ]]; then VIDEO="dist/$VIDEO_FILE"; STORY=work/daily/story.json; else VIDEO=dist/chatgpt-teens-ja.mp4; STORY=config/stories/chatgpt-teens-ja.json; fi
+          set +e; python3 scripts/check_opening_frames.py "$VIDEO" "$STORY" reports/opening | tee reports/opening-qa.txt; status=${PIPESTATUS[0]}; set -e
+          if [[ "$status" -ne 0 ]]; then OPENING_SAFE_MODE=1 python3 scripts/render_reference.py "$STORY" "$VIDEO"; python3 scripts/check_opening_frames.py "$VIDEO" "$STORY" reports/opening | tee -a reports/opening-qa.txt; fi
+          python3 scripts/extract_review_frames.py "$VIDEO" reports/scenes
+      - name: Automated video QA
+        run: |
+          if [[ "${{ inputs.render_target }}" == daily_story ]]; then VIDEO="dist/$VIDEO_FILE"; elif [[ "${{ inputs.render_target }}" == teen_chatgpt ]]; then VIDEO=dist/chatgpt-teens-ja.mp4; else VIDEO=dist/ai-news.mp4; fi
           python3 scripts/check_video.py "$VIDEO" | tee reports/qa.txt
           ffmpeg -v error -i "$VIDEO" -f null - 2> reports/decode-errors.txt
           ffmpeg -i "$VIDEO" -vf blackdetect=d=0.3 -an -f null - 2> reports/blackdetect.txt
           ffmpeg -i "$VIDEO" -vf freezedetect=n=-50dB:d=1 -an -f null - 2> reports/freezedetect.txt
           ffmpeg -i "$VIDEO" -af loudnorm=print_format=json -f null - 2> reports/loudness.txt
-      - name: Opening thumbnail QA and one automatic correction pass
-        if: inputs.render_target == 'teen_chatgpt'
-        run: |
-          set +e
-          python3 scripts/check_opening_frames.py \
-            dist/chatgpt-teens-ja.mp4 config/stories/chatgpt-teens-ja.json reports/opening \
-            | tee reports/opening-qa.txt
-          status=${PIPESTATUS[0]}
-          set -e
-          if [[ "$status" -ne 0 ]]; then
-            echo "Opening QA failed; re-rendering the deterministic safe layout once" | tee -a reports/opening-qa.txt
-            rm -f assets/generated/scene-teen-hero.png
-            make render-teen-news
-            python3 scripts/check_opening_frames.py \
-              dist/chatgpt-teens-ja.mp4 config/stories/chatgpt-teens-ja.json reports/opening \
-              | tee -a reports/opening-qa.txt
-          fi
+      - name: Write daily automation decision
+        if: inputs.render_target == 'daily_story'
+        run: python3 scripts/write_automation_result.py work/daily/story.json "dist/$VIDEO_FILE" reports reports/automation-result.json
       - name: Upload video and QA evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ai-news-video-${{ github.run_number }}
+          name: ai-news-video-${{ inputs.request_id || inputs.render_target }}-${{ github.run_number }}
           if-no-files-found: warn
           retention-days: 14
           path: |
             dist/*.mp4
             reports/**
             work/story.json
+            work/daily/**
             config/stories/chatgpt-teens-ja.json
             config/image-generation.json
             assets/generated/**
