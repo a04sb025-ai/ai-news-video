@@ -35,6 +35,7 @@ jobs:
           ffmpeg -version | head -1
           ffprobe -version | head -1
       - name: Fetch and validate latest OpenMontage
+        if: inputs.render_target == 'generic_url'
         run: |
           ./scripts/openmontage.sh install
           ./scripts/setup_openmontage.sh
