@@ -1,4 +1,4 @@
-.PHONY: setup doctor test openmontage-update intake generate-teen-images render render-teen-news qa opening-qa voice-qa review-frames
+.PHONY: setup doctor test openmontage-update intake generate-teen-images prepare-daily generate-daily-images render render-daily render-teen-news qa opening-qa voice-qa review-frames
 setup:
 	./scripts/setup.sh
 doctor:
@@ -28,3 +28,11 @@ voice-qa:
 review-frames:
 	@test -n "$(VIDEO)" || (echo 'Usage: make review-frames VIDEO=dist/news.mp4' >&2; exit 2)
 	python3 scripts/extract_review_frames.py "$(VIDEO)" reports/scenes
+
+prepare-daily:
+	@test -n "$(PAYLOAD)" || (echo 'Usage: make prepare-daily PAYLOAD=payload.json' >&2; exit 2)
+	python3 scripts/daily_story.py prepare "$(PAYLOAD)" work/daily
+generate-daily-images:
+	python3 scripts/generate_story_images.py "$(or $(STORY),work/daily/story.json)"
+render-daily:
+	python3 scripts/render_reference.py "$(or $(STORY),work/daily/story.json)" "$(VIDEO)"

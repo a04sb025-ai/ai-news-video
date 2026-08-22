@@ -164,3 +164,18 @@ CIは `scripts/check_opening_frames.py` で0.5 / 1.5 / 2.5秒をPNGへ抽出し�
 5. **生成AI特有のロボット・教材・ストック風の既視感を避け、人物主体のエディトリアル表現を標準にすること**
 
 以上を、OpenMontageで制作するAIニュース動画の標準ルールとする。
+
+## 13. 全ニュース共通の日次自動化仕様
+- verified briefだけを事実の正本とし、動画生成時に主張・因果・数値を補完しない。
+- 画像は「AI」ではなく変化を受ける人、製品、UI利用状況、具体的な場面を主役にする。人物が不自然な企業・モデル発表では無理に人物を足さない。
+- 全4本編画像へ共通の主人公、画風、色、紙・粒子の質感、光、彩度blockを適用する。
+- 白いAIロボット、人型マスコット、光る脳・球、汎用企業絵、教材、インフォグラフィック、ストック、滑らかな3D CG、生成文字、読める偽UI、無意味な盾・星・脳を禁止する。
+- 冒頭captionはverified headlineを意味変更・substring切断せず、1行18文字を目安に入力内の安全な意味境界で最大2行へ改行する。完全な意味を合計36文字程度に収められない場合はvalidation failureとし、upstreamへ短いcaptionを要求する。QA不合格時は画像を再生成せず、既存画像の暗色パネルとレイアウトを1回だけ補正する。
+- 画像API予算は通常かつ最大4枚。候補生成とAPI retryを行わず、request ID + canonical payload content hash + prompt versionでキャッシュする。
+- fallback動画は初回opening QAが失敗した場合に高コントラストのsafe layoutで1回だけ再renderし、再QAにも失敗すれば失敗とする。技術QAを通せても、自動投稿可能とは判定しない。
+
+- 日次画像promptはシーンごとのverified contentだけに結び付ける（冒頭=headline+hook、つまり何=summary、新規性=point 1、追加点=point 2/3）。全claimsを各promptへ混在させない。
+- 日次fallbackはlabel、caption、中立的な図形、progressのみを用い、ティーン固有の宿題・学習・安全・盾・休憩や一次情報にない具体物を表示しない。
+- 自動投稿可能判定ではcurrent content hash配下の非空4画像、completeな生成log、期待画像一覧、renderer usage manifestの一致を必須とする。
+- narration_termsはsource narrationにwritten termが存在するときだけ変換を必須検査し、未使用mappingはQA対象外とする。daily_storyのautomation-result.jsonは証跡不足・前段失敗時も必ず生成し、不足checkをfalseにする。
+- 約3秒の各日次ナレーションはpronunciation置換後、Unicode句読点・空白を除いて24 spoken characters以下とする。Scene 4はpoint 2/3の結合後に合計を検査し、超過時は意味を短縮せずupstream validation failureとする。

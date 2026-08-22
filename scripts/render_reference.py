@@ -28,14 +28,12 @@ SAFE_OPENING = os.environ.get("OPENING_SAFE_MODE") == "1"
 PALETTE = ["18213A", "122E3A", "25304A", "111827"]
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE_CONFIG = json.loads((ROOT / "config/image-generation.json").read_text())
-ASSET_DIR = ROOT / IMAGE_CONFIG["output_directory"] / IMAGE_CONFIG["prompt_version"]
-STORY_IMAGES = [
-    ASSET_DIR / "scene-teen-hero.png",
-    ASSET_DIR / "scene-teen-thinking.png",
-    ASSET_DIR / "scene-teen-safety.png",
-    ASSET_DIR / "scene-teen-healthy-use.png",
-]
-USE_STORY_IMAGES = all(image.is_file() and image.stat().st_size > 0 for image in STORY_IMAGES)
+ASSET_DIR = ROOT / story.get("image_asset_dir", str(Path(IMAGE_CONFIG["output_directory"]) / IMAGE_CONFIG["prompt_version"]))
+STORY_IMAGES = [ASSET_DIR / name for name in story.get("image_assets", [
+    "scene-teen-hero.png", "scene-teen-thinking.png", "scene-teen-safety.png", "scene-teen-healthy-use.png",
+])]
+USE_STORY_IMAGES = len(STORY_IMAGES) == 4 and all(image.is_file() and image.stat().st_size > 0 for image in STORY_IMAGES)
+IS_DAILY = "content_hash" in story
 
 
 def stamp(seconds):
@@ -137,6 +135,11 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         events.append(vector(start, end, rect_path(72, 1735, progress, 8), "58D6FF", layer=2))
 
         if index == 0:
+            if IS_DAILY and not USE_STORY_IMAGES and SAFE_OPENING:
+                # A deterministic high-contrast editorial field for image-free QA;
+                # it carries no facts or topic-specific iconography.
+                events.append(vector(start, end, rect_path(0, 720, WIDTH, 820), "E8EDF7", layer=1))
+                events.append(vector(start, end, rect_path(0, 1540, WIDTH, 195), "25304A", layer=1))
             events.append(dialogue(start, end, "Eyebrow", cue.get("label", "AI NEWS"), r"\fad(100,100)", 3))
             # The opening is a thumbnail: image/subject first, one large conclusion, no decorative hero icon.
             panel_alpha = "&H08&" if SAFE_OPENING else "&H28&"
@@ -147,16 +150,24 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         elif index == 1:
             events.append(dialogue(start, end, "Eyebrow", cue.get("label", "つまり、何？"), r"\fad(100,100)", 3))
             if not USE_STORY_IMAGES:
-                events.append(vector(start, end, rect_path(145, 430, 790, 690), "FFFFFF", r"\fad(120,100)", 2))
-                events.append(vector(start + .20, end, rect_path(220, 545, 520, 100), "EAF2FF", r"\fad(100,100)", 3))
-                events.append(dialogue(start + .20, end, "Small", "宿題をわかりやすく教えて", r"\pos(480,595)\fad(100,100)", 4))
-                events.append(vector(start + .55, end, rect_path(340, 700, 515, 100), "C9F7FF", r"\fad(100,100)", 3))
-                events.append(dialogue(start + .55, end, "Small", "もちろん！一緒に考えよう", r"\pos(597,750)\1c&H151B2B&\fad(100,100)", 4))
+                if IS_DAILY:
+                    events.append(vector(start, end, rect_path(130, 430, 820, 620), "25304A", r"\fad(120,100)", 2))
+                    events.append(vector(start + .2, end, rect_path(190, 510, 700, 18), "58D6FF", r"\fad(100,100)", 3))
+                    events.append(vector(start + .4, end, rect_path(190, 590, 520, 18), "C9F7FF", r"\fad(100,100)", 3))
+                else:
+                    events.append(vector(start, end, rect_path(145, 430, 790, 690), "FFFFFF", r"\fad(120,100)", 2))
+                    events.append(vector(start + .20, end, rect_path(220, 545, 520, 100), "EAF2FF", r"\fad(100,100)", 3))
+                    events.append(dialogue(start + .20, end, "Small", "宿題をわかりやすく教えて", r"\pos(480,595)\fad(100,100)", 4))
+                    events.append(vector(start + .55, end, rect_path(340, 700, 515, 100), "C9F7FF", r"\fad(100,100)", 3))
+                    events.append(dialogue(start + .55, end, "Small", "もちろん！一緒に考えよう", r"\pos(597,750)\1c&H151B2B&\fad(100,100)", 4))
             events.append(vector(start, end, rect_path(52, 1310, 976, 390), "101528", r"\alpha&H18&\fad(120,100)", 3))
             events.append(dialogue(start, end, "Caption", cue["caption"], r"\fad(120,100)", 4))
         elif index == 2:
             events.append(dialogue(start, end, "Eyebrow", cue.get("label", "ここがポイント"), r"\fad(100,100)", 3))
-            if not USE_STORY_IMAGES:
+            if not USE_STORY_IMAGES and IS_DAILY:
+                events.append(vector(start, end, rect_path(110, 450, 860, 590), "25304A", r"\fad(100,100)", 2))
+                events.append(vector(start + .2, end, rect_path(170, 520, 24, 430), "58D6FF", r"\fad(100,100)", 3))
+            elif not USE_STORY_IMAGES:
                 events.append(vector(start, end, rect_path(100, 440, 405, 610), "FFF3C4", r"\fad(100,100)", 2))
                 events.append(vector(start + .20, end, rect_path(575, 440, 405, 610), "C9F7FF", r"\fad(100,100)", 2))
                 # Simple book and shield symbols, drawn without external assets.
@@ -168,7 +179,10 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             events.append(dialogue(start, end, "Caption", cue["caption"], r"\fad(120,100)", 4))
         elif index < len(story["script"]) - 1:
             events.append(dialogue(start, end, "Eyebrow", cue.get("label", "さらに"), r"\fad(100,100)", 3))
-            if not USE_STORY_IMAGES:
+            if not USE_STORY_IMAGES and IS_DAILY:
+                events.append(vector(start, end, rect_path(145, 470, 790, 610), "25304A", r"\fad(120,100)", 2))
+                events.append(vector(start + .2, end, rect_path(215, 570, 650, 22), "58D6FF", r"\fad(100,100)", 3))
+            elif not USE_STORY_IMAGES:
                 events.append(vector(start, end, rect_path(145, 470, 790, 610), "C9F7FF", r"\fad(120,100)", 2))
                 events.append(dialogue(start, end, "Label", "休 憩", r"\pos(540,760)\fs72\fad(100,100)", 4))
             events.append(vector(start, end, rect_path(52, 1310, 976, 390), "101528", r"\alpha&H18&\fad(120,100)", 3))
@@ -214,4 +228,8 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         "-movflags", "+faststart", str(output),
     ])
     subprocess.run(command, check=True)
+manifest = {"content_hash": story.get("content_hash"), "used_generated_images": USE_STORY_IMAGES,
+            "image_directory": str(ASSET_DIR),
+            "images": [str(image) for image in STORY_IMAGES] if USE_STORY_IMAGES else []}
+output.with_suffix(".render.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
 print(output)
