@@ -24,7 +24,10 @@ class ScaffoldTest(unittest.TestCase):
         self.assertEqual(story["source_url"], "https://openai.com/index/introducing-chatgpt-for-teens/")
         self.assertTrue(all(claim["source_url"] == story["source_url"] for claim in story["claims"]))
         self.assertEqual(story["script"][0]["start"], 0)
-        self.assertEqual(story["script"][-1]["end"], 12)
+        self.assertEqual(story["script"][0]["end"], 3)
+        self.assertEqual(story["script"][-1]["end"], 13)
+        self.assertIn("ChatGPT", story["script"][0]["caption"])
+        self.assertIn("13〜17", story["script"][0]["caption"])
         for current, following in zip(story["script"], story["script"][1:]):
             self.assertEqual(current["end"], following["start"])
         for cue in story["script"]:
@@ -40,11 +43,14 @@ class ScaffoldTest(unittest.TestCase):
         self.assertIn("config/stories/chatgpt-teens-ja.json", workflow)
         self.assertIn("OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}", workflow)
         self.assertIn("continue-on-error: true", workflow)
-    def test_image_provider_has_exactly_two_safe_cached_assets(self):
+        self.assertIn("scripts/check_opening_frames.py", workflow)
+        self.assertIn("reports/opening", workflow)
+    def test_image_provider_has_three_safe_cached_assets(self):
         generator = (ROOT / "scripts/generate_story_images.py").read_text()
         config = json.loads((ROOT / "config/image-generation.json").read_text())
         self.assertEqual(config["provider"], "openai")
         self.assertEqual(config["api_key_env"], "OPENAI_API_KEY")
+        self.assertEqual(generator.count('"scene-teen-hero.png":'), 1)
         self.assertEqual(generator.count('"scene-teen-chat.png":'), 1)
         self.assertEqual(generator.count('"scene-learning-safety.png":'), 1)
         self.assertIn("destination.is_file()", generator)
