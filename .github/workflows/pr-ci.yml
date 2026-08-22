@@ -34,7 +34,7 @@ jobs:
           VIDEO="dist/$(cat work/ci/video-filename.txt)"
           python3 scripts/check_story_voice.py work/ci/story.json reports/voice-script-qa.json | tee reports/voice-script-qa.txt
           python3 scripts/render_reference.py work/ci/story.json "$VIDEO"
-          python3 scripts/check_opening_frames.py "$VIDEO" work/ci/story.json reports/opening | tee reports/opening-qa.txt
+          scripts/opening_qa_with_correction.sh "$VIDEO" work/ci/story.json reports/opening
           python3 scripts/check_video.py "$VIDEO" | tee reports/qa.txt
           ffmpeg -v error -i "$VIDEO" -f null - 2> reports/decode-errors.txt
           ffmpeg -i "$VIDEO" -vf blackdetect=d=0.3 -an -f null - 2> reports/blackdetect.txt

@@ -135,6 +135,11 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         events.append(vector(start, end, rect_path(72, 1735, progress, 8), "58D6FF", layer=2))
 
         if index == 0:
+            if IS_DAILY and not USE_STORY_IMAGES and SAFE_OPENING:
+                # A deterministic high-contrast editorial field for image-free QA;
+                # it carries no facts or topic-specific iconography.
+                events.append(vector(start, end, rect_path(0, 720, WIDTH, 820), "E8EDF7", layer=1))
+                events.append(vector(start, end, rect_path(0, 1540, WIDTH, 195), "25304A", layer=1))
             events.append(dialogue(start, end, "Eyebrow", cue.get("label", "AI NEWS"), r"\fad(100,100)", 3))
             # The opening is a thumbnail: image/subject first, one large conclusion, no decorative hero icon.
             panel_alpha = "&H08&" if SAFE_OPENING else "&H28&"

@@ -1,10 +1,12 @@
-import importlib.util, json, subprocess, sys, tempfile, unittest
+import importlib.util, json, os, subprocess, sys, tempfile, unittest
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("daily", ROOT / "scripts/daily_story.py")
 daily = importlib.util.module_from_spec(spec); spec.loader.exec_module(daily)
 result_spec = importlib.util.spec_from_file_location("result", ROOT / "scripts/write_automation_result.py")
 result = importlib.util.module_from_spec(result_spec); result_spec.loader.exec_module(result)
+voice_spec = importlib.util.spec_from_file_location("voice", ROOT / "scripts/check_story_voice.py")
+voice = importlib.util.module_from_spec(voice_spec); voice_spec.loader.exec_module(voice)
 def valid(): return json.loads((ROOT / "tests/fixtures/daily-story-valid.json").read_text())
 class DailyStoryTest(unittest.TestCase):
  def test_valid_payload_and_structure(self):
@@ -47,6 +49,29 @@ class DailyStoryTest(unittest.TestCase):
    self.assertTrue(result.generated_images_ready(story,video)); (image_dir/story["image_assets"][0]).write_bytes(b""); self.assertFalse(result.generated_images_ready(story,video))
  def test_fallback_is_not_publish_ready(self):
   source=(ROOT/"scripts/write_automation_result.py").read_text(); self.assertIn('"auto_publish_ready": success and used',source)
+ def test_unused_narration_term_is_skipped(self):
+  story=daily.build_story(valid()); story["voice_pronunciations"]["API"]="エーピーアイ"
+  report=voice.build_report(story); self.assertTrue(report["passed"]); self.assertIn("API",report["skipped_unused_terms"])
+ def test_used_narration_term_replaced_passes(self):
+  story=daily.build_story(valid()); self.assertTrue(voice.build_report(story)["checks"]["term_AI_normalized"])
+ def test_used_narration_term_unreplaced_fails(self):
+  story=daily.build_story(valid()); story["script"][0]["narration"]="AIをそのまま読む"
+  self.assertFalse(voice.build_report(story)["checks"]["term_AI_normalized"])
+ def test_missing_evidence_still_writes_failed_result(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d); story=root/"story.json"; story.write_text(json.dumps(daily.build_story(valid()))); output=root/"automation-result.json"
+   run=subprocess.run([sys.executable,ROOT/"scripts/write_automation_result.py",story,root/"missing.mp4",root/"reports",output])
+   self.assertNotEqual(run.returncode,0); self.assertTrue(output.is_file()); decision=json.loads(output.read_text())
+   self.assertFalse(decision["success"]); self.assertFalse(decision["auto_publish_ready"]); self.assertTrue(decision["qa"]["story_validation"]); self.assertTrue(all(value is False for key,value in decision["qa"].items() if key != "story_validation"))
+ def test_opening_first_failure_then_safe_success_or_failure(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d); fake=root/"python3"; state=root/"state"
+   fake.write_text("#!/bin/sh\ncase \"$1\" in *check_opening_frames.py) n=$(cat \"$FAKE_STATE\" 2>/dev/null || echo 0); n=$((n+1)); echo $n > \"$FAKE_STATE\"; test $n -gt 1 && exit $SAFE_CHECK_RESULT; exit 1;; *render_reference.py) exit 0;; esac\n")
+   fake.chmod(0o755); base=dict(os.environ,PATH=f"{root}:{os.environ['PATH']}",FAKE_STATE=str(state))
+   passed=subprocess.run(["bash",ROOT/"scripts/opening_qa_with_correction.sh","video.mp4","story.json",root/"reports/opening"],cwd=ROOT,env=dict(base,SAFE_CHECK_RESULT="0"))
+   self.assertEqual(passed.returncode,0); self.assertEqual(state.read_text().strip(),"2")
+   state.unlink(); failed=subprocess.run(["bash",ROOT/"scripts/opening_qa_with_correction.sh","video.mp4","story.json",root/"reports-2/opening"],cwd=ROOT,env=dict(base,SAFE_CHECK_RESULT="1"))
+   self.assertNotEqual(failed.returncode,0); self.assertEqual(state.read_text().strip(),"2")
  def test_regression_targets_remain(self):
   workflow=(ROOT/".github/workflows/render-video.yml").read_text(); self.assertTrue(all(x in workflow for x in ("teen_chatgpt","generic_url","daily_story")))
 if __name__ == "__main__": unittest.main()

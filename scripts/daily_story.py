@@ -101,7 +101,8 @@ def build_story(payload):
     narrations = [payload["hook"], payload["summary"], points[0], points[1] if len(points) == 2 else f"{points[1]}。{points[2]}"]
     labels = ["AI NEWS", "つまり、何？", "ここが新しい", "さらに"]
     script = [{"start": i * 3.0, "end": (i + 1) * 3.0, "label": labels[i],
-               "caption": captions[i], "narration": speak(narrations[i], terms)} for i in range(4)]
+               "caption": captions[i], "source_narration": narrations[i],
+               "narration": speak(narrations[i], terms)} for i in range(4)]
     script.append({"start": 12.0, "end": 14.0, "label": "AIニュース速報",
                    "caption": "AIツールウォッチ", "narration": "エーアイツールウォッチ。"})
     digest = content_hash(payload)
