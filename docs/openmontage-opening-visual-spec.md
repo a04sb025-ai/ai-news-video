@@ -178,3 +178,4 @@ CIは `scripts/check_opening_frames.py` で0.5 / 1.5 / 2.5秒をPNGへ抽出し�
 - 日次fallbackはlabel、caption、中立的な図形、progressのみを用い、ティーン固有の宿題・学習・安全・盾・休憩や一次情報にない具体物を表示しない。
 - 自動投稿可能判定ではcurrent content hash配下の非空4画像、completeな生成log、期待画像一覧、renderer usage manifestの一致を必須とする。
 - narration_termsはsource narrationにwritten termが存在するときだけ変換を必須検査し、未使用mappingはQA対象外とする。daily_storyのautomation-result.jsonは証跡不足・前段失敗時も必ず生成し、不足checkをfalseにする。
+- 約3秒の各日次ナレーションはpronunciation置換後、Unicode句読点・空白を除いて24 spoken characters以下とする。Scene 4はpoint 2/3の結合後に合計を検査し、超過時は意味を短縮せずupstream validation failureとする。

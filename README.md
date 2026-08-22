@@ -122,7 +122,7 @@ Actions の `render_target=daily_story` に、安全な `request_id` と以下�
 {"request_id":"2026-08-23-openai-example","news_key":"...","source_url":"https://公式一次情報.example/news","article_url":"https://aitoolwatch.jp/articles/...","headline":"...","hook":"...","summary":"...","points":["...","..."],"narration_terms":{"ChatGPT":"チャットジーピーティー"}}
 ```
 
-`source_url` / `article_url` はHTTPS、一次情報は記事URLと別ホスト、`points` は2〜3件です。文字数上限は headline 80、hook 120、summary 240、各point 160文字です。不正JSONや危険なrequest IDはレンダー前に失敗します。captionは1行18文字を目安に、入力内の句読点など安全な意味境界でのみ最大2行へ改行します。途中切断や意味の書き換えはせず、安全に収まらない場合はAI Tool Watch側へ短い入力を要求するvalidation errorになります。動画側は渡された値だけから役割別の台本と画像プロンプトを作り、事実を補いません。narration_termsは元ナレーションで実際に使われた語だけをvoice QA対象とし、未使用mappingは安全にskipします。
+`source_url` / `article_url` はHTTPS、一次情報は記事URLと別ホスト、`points` は2〜3件です。文字数上限は headline 80、hook 120、summary 240、各point 160文字です。不正JSONや危険なrequest IDはレンダー前に失敗します。captionは1行18文字を目安に、入力内の句読点など安全な意味境界でのみ最大2行へ改行します。途中切断や意味の書き換えはせず、安全に収まらない場合はAI Tool Watch側へ短い入力を要求するvalidation errorになります。動画側は渡された値だけから役割別の台本と画像プロンプトを作り、事実を補いません。narration_termsは元ナレーションで実際に使われた語だけをvoice QA対象とし、未使用mappingは安全にskipします。各約3秒シーンは読み置換後、句読点・空白を除く最大24 spoken charactersとし、Scene 4のpoint 2/3結合後も超過時は短縮せずvalidation errorにします。
 
 画像は1 run最大4枚で、`assets/generated/<request_id>/<content_hash>/daily-editorial-v1/` にキャッシュします。同じrequest ID・canonical payload由来のcontent hash・prompt versionの既存画像は再生成しません。payloadが変われば同じrequest IDでも別directoryとなり、古い画像は利用しません。APIは再試行せず、失敗時もモーショングラフィックスで技術的レンダーを続行しますが `auto_publish_ready` は false です。出力名は canonical payload のSHA-256先頭12桁を含む `<request_id>-<hash>.mp4` なので、同じ内容は同名、変更時は別名になります。
 

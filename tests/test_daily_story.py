@@ -72,6 +72,28 @@ class DailyStoryTest(unittest.TestCase):
    self.assertEqual(passed.returncode,0); self.assertEqual(state.read_text().strip(),"2")
    state.unlink(); failed=subprocess.run(["bash",ROOT/"scripts/opening_qa_with_correction.sh","video.mp4","story.json",root/"reports-2/opening"],cwd=ROOT,env=dict(base,SAFE_CHECK_RESULT="1"))
    self.assertNotEqual(failed.returncode,0); self.assertEqual(state.read_text().strip(),"2")
+ def test_normal_japanese_narrations_fit_spoken_budget(self):
+  story=daily.build_story(valid())
+  self.assertTrue(all(daily.spoken_character_count(cue["narration"]) <= 24 for cue in story["script"][:4]))
+ def test_long_hook_fails_spoken_budget(self):
+  payload=valid(); payload["hook"]="長" * 25
+  with self.assertRaisesRegex(ValueError,"scene 1 narration is too long"): daily.build_story(payload)
+ def test_combined_scene_four_points_fail_spoken_budget(self):
+  payload=valid(); payload["points"]=["新機能です。","追加された重要情報を説明します。","変更された重要情報も説明します。"]
+  with self.assertRaisesRegex(ValueError,"scene 4 narration is too long"): daily.build_story(payload)
+ def test_relative_story_paths_match_absolute_render_manifest(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d); previous=Path.cwd()
+   try:
+    os.chdir(root); story=daily.build_story(valid()); image_dir=Path(story["image_asset_dir"]); image_dir.mkdir(parents=True)
+    video=(root/"video.mp4"); video.write_bytes(b"video")
+    for name in story["image_assets"]: (image_dir/name).write_bytes(b"png")
+    log={"status":"complete","content_hash":story["content_hash"],"expected_images":story["image_assets"],"images":[{"file":n,"result":"generated"} for n in story["image_assets"]]}; (image_dir/"image-generation-log.json").write_text(json.dumps(log))
+    absolute=image_dir.resolve(); render={"used_generated_images":True,"content_hash":story["content_hash"],"image_directory":str(absolute),"images":[str(absolute/n) for n in story["image_assets"]]}; video.with_suffix(".render.json").write_text(json.dumps(render))
+    reports=root/"reports"; (reports/"opening").mkdir(parents=True); (reports/"opening/opening-qa.json").write_text(json.dumps({"passed":True,"frames":[{},{},{}]})); (reports/"voice-script-qa.json").write_text(json.dumps({"passed":True})); (reports/"qa.txt").write_text("PASS video\n"); (reports/"decode-errors.txt").write_text(""); (reports/"blackdetect.txt").write_text("no black frames")
+    decision=result.build_result(story,video,reports)
+    self.assertTrue(decision["used_generated_images"]); self.assertTrue(decision["success"]); self.assertTrue(decision["auto_publish_ready"])
+   finally: os.chdir(previous)
  def test_regression_targets_remain(self):
   workflow=(ROOT/".github/workflows/render-video.yml").read_text(); self.assertTrue(all(x in workflow for x in ("teen_chatgpt","generic_url","daily_story")))
 if __name__ == "__main__": unittest.main()

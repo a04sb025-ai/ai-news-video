@@ -20,9 +20,14 @@ def read_text(path):
         return False, ""
 
 
+def canonical_path(path):
+    """Normalize relative and absolute manifest paths without requiring existence."""
+    return Path(path).expanduser().resolve(strict=False)
+
+
 def generated_images_ready(story, video):
     expected = story.get("image_assets", [])
-    image_dir = Path(story.get("image_asset_dir", ""))
+    image_dir = canonical_path(story.get("image_asset_dir", ""))
     digest = story.get("content_hash")
     correct_dir = digest and image_dir.parts[-3:] == (story.get("request_id"), digest, "daily-editorial-v1")
     files_ok = len(expected) == 4 and all(
@@ -34,8 +39,9 @@ def generated_images_ready(story, video):
               and log.get("expected_images") == expected and recorded == expected)
     render = read_json(video.with_suffix(".render.json"))
     rendered = (render.get("used_generated_images") is True and render.get("content_hash") == digest
-                and Path(render.get("image_directory", "")) == image_dir
-                and render.get("images") == [str(image_dir / name) for name in expected])
+                and canonical_path(render.get("image_directory", "")) == image_dir
+                and [canonical_path(path) for path in render.get("images", [])]
+                == [canonical_path(image_dir / name) for name in expected])
     return bool(correct_dir and files_ok and log_ok and rendered)
 
 

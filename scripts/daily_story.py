@@ -4,11 +4,13 @@ import hashlib
 import json
 import re
 import sys
+import unicodedata
 from pathlib import Path
 from urllib.parse import urlparse
 
 MAX_TEXT = {"headline": 80, "hook": 120, "summary": 240, "point": 160}
 REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
+SPOKEN_CHARACTER_BUDGET = 24
 
 
 def validate(payload):
@@ -94,15 +96,34 @@ def speak(text, terms):
     return text
 
 
+def spoken_character_count(text):
+    """Count spoken content, excluding Unicode punctuation and whitespace."""
+    return sum(1 for character in text
+               if not character.isspace() and not unicodedata.category(character).startswith(("P", "Z")))
+
+
+def validate_narrations(narrations, terms, limit=SPOKEN_CHARACTER_BUDGET):
+    normalized = [speak(text, terms) for text in narrations]
+    for scene, narration in enumerate(normalized, 1):
+        count = spoken_character_count(narration)
+        if count > limit:
+            raise ValueError(
+                f"scene {scene} narration is too long after pronunciation normalization "
+                f"({count} spoken characters; maximum {limit}); provide shorter verified text upstream"
+            )
+    return normalized
+
+
 def build_story(payload):
     terms = payload.get("narration_terms", {})
     points = payload["points"]
     captions = [caption(payload["headline"]), caption(payload["summary"]), caption(points[0]), caption(points[1])]
     narrations = [payload["hook"], payload["summary"], points[0], points[1] if len(points) == 2 else f"{points[1]}。{points[2]}"]
+    normalized_narrations = validate_narrations(narrations, terms)
     labels = ["AI NEWS", "つまり、何？", "ここが新しい", "さらに"]
     script = [{"start": i * 3.0, "end": (i + 1) * 3.0, "label": labels[i],
                "caption": captions[i], "source_narration": narrations[i],
-               "narration": speak(narrations[i], terms)} for i in range(4)]
+               "narration": normalized_narrations[i]} for i in range(4)]
     script.append({"start": 12.0, "end": 14.0, "label": "AIニュース速報",
                    "caption": "AIツールウォッチ", "narration": "エーアイツールウォッチ。"})
     digest = content_hash(payload)
@@ -137,7 +158,7 @@ def main():
     try:
         story = build_story(payload)
     except ValueError as error:
-        raise SystemExit(f"invalid story_payload captions: {error}")
+        raise SystemExit(f"invalid story_payload content: {error}")
     output.mkdir(parents=True, exist_ok=True)
     (output / "source-payload.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
     (output / "story.json").write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n")
