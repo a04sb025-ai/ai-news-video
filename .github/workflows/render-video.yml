@@ -99,6 +99,23 @@ jobs:
           ffmpeg -i "$VIDEO" -vf blackdetect=d=0.3 -an -f null - 2> reports/blackdetect.txt
           ffmpeg -i "$VIDEO" -vf freezedetect=n=-50dB:d=1 -an -f null - 2> reports/freezedetect.txt
           ffmpeg -i "$VIDEO" -af loudnorm=print_format=json -f null - 2> reports/loudness.txt
+      - name: Opening thumbnail QA and one automatic correction pass
+        if: inputs.render_target == 'teen_chatgpt'
+        run: |
+          set +e
+          python3 scripts/check_opening_frames.py \
+            dist/chatgpt-teens-ja.mp4 config/stories/chatgpt-teens-ja.json reports/opening \
+            | tee reports/opening-qa.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          if [[ "$status" -ne 0 ]]; then
+            echo "Opening QA failed; re-rendering the deterministic safe layout once" | tee -a reports/opening-qa.txt
+            rm -f assets/generated/scene-teen-hero.png
+            make render-teen-news
+            python3 scripts/check_opening_frames.py \
+              dist/chatgpt-teens-ja.mp4 config/stories/chatgpt-teens-ja.json reports/opening \
+              | tee -a reports/opening-qa.txt
+          fi
       - name: Upload video and QA evidence
         if: always()
         uses: actions/upload-artifact@v4
