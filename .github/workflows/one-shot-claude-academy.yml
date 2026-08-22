@@ -6,13 +6,19 @@ on:
     branches: [main]
     paths:
       - .github/workflows/one-shot-claude-academy.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - requests/20260823-claude-academy.txt
 
 permissions:
   contents: read
 
 jobs:
   render:
-    if: contains(github.event.head_commit.message, 'render Claude Academy test video')
+    if: >-
+      (github.event_name == 'push' && contains(github.event.head_commit.message, 'render Claude Academy test video')) ||
+      (github.event_name == 'pull_request' && github.head_ref == 'automation/claude-academy-render')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
