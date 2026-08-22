@@ -14,28 +14,33 @@ CONFIG = json.loads((ROOT / "config/image-generation.json").read_text())
 OUTPUT = ROOT / CONFIG["output_directory"]
 PROMPTS = {
     "scene-teen-hero.png": (
-        "Use case: illustration-story. Asset type: thumbnail hero for the opening three seconds of a 9:16 "
-        "Japanese mobile news short. Bright, premium editorial news illustration: one relatable teenage student "
-        "age 13 to 17, face large and expressive, using a laptop with a clearly recognizable friendly AI chat "
-        "interface made only of abstract message shapes. Put the student on the lower-right half and preserve clean, "
-        "darker negative space across the upper-left for a very large headline. Strong focal point, high contrast, "
-        "simple composition, energetic cyan and warm amber accents, consistent modern editorial style. "
-        "No words, letters, numbers, readable UI copy, logos, brands, watermark, or extra people."
+        "Use case: illustration-story. Asset type: 9:16 mobile-news thumbnail hero. Premium contemporary editorial "
+        "illustration with one Japanese teenage student as the unmistakable subject; close face, expressive look of "
+        "discovery, interest and slight surprise, using a laptop with an abstract AI chat interface. Compose the face "
+        "large in the lower-right, leaving calm dark negative space at upper-left for a large headline. Strong cyan, "
+        "deep navy and warm amber contrast, cinematic light, sophisticated news-magazine finish, not a textbook image. "
+        "No words, letters, numbers, readable UI, logos, brands, watermark, or extra people."
     ),
-    "scene-teen-chat.png": (
-        "Use case: illustration-story. Asset type: background illustration for a 9:16 Japanese news short. "
-        "A student around age 13 to 17, shown large, uses a laptop in a welcoming study space and asks an AI "
-        "for help learning. Friendly, simple, polished editorial illustration with large readable subjects, warm "
-        "natural expressions, and a clean vertical composition. Keep the bottom 32 percent visually simple and dark "
-        "enough for two subtitle lines. No words, letters, UI copy, logos, brands, or watermark."
+    "scene-teen-thinking.png": (
+        "Use case: illustration-story. Asset type: 9:16 mobile-news scene. In the same cyan, navy and warm amber "
+        "editorial style, a teenage student works through one challenging problem while an AI assistant offers visual "
+        "hint shapes and a questioning gesture instead of giving a finished answer. Show focused thinking and a warm "
+        "coach relationship, face large, one clear focal point. Keep the bottom 32 percent simple and dark for captions. "
+        "No answer sheet, words, letters, numbers, readable UI, logos, brands, watermark, or extra people."
     ),
-    "scene-learning-safety.png": (
-        "Use case: scientific-educational. Asset type: background illustration for a 9:16 Japanese news short. "
-        "A teenage student receives useful learning support from an AI while also feeling naturally protected and "
-        "safe. Show a real scene with the student and learning materials; a subtle shield motif may be integrated "
-        "into the environment, but do not make an icon-only screen. Friendly, simple, polished editorial "
-        "illustration, clean vertical composition with a simple lower subtitle-safe area. No words, letters, logos, "
-        "brands, or watermark."
+    "scene-teen-safety.png": (
+        "Use case: illustration-story. Asset type: 9:16 mobile-news scene. Same premium editorial series style. A "
+        "teenage student uses an AI learning assistant calmly while a subtle luminous protective boundary filters out "
+        "unidentifiable noisy shapes in the distant background. Communicate safety without depicting harm or an "
+        "icon-only shield. Face large, reassuring expression, clean lower caption area. No dangerous acts, words, "
+        "letters, numbers, readable UI, logos, brands, or watermark."
+    ),
+    "scene-teen-healthy-use.png": (
+        "Use case: illustration-story. Asset type: 9:16 mobile-news scene. Same premium editorial series style. A "
+        "teenage student takes a healthy break beside a closed laptop, looking toward daylight, with a simple analog "
+        "clock and study materials suggesting time management. The AI remains clearly a useful tool at a respectful "
+        "distance, never a romantic companion. Face large, balanced calm mood, clean lower caption area. No words, "
+        "letters, numbers, readable UI, romance, logos, brands, or watermark."
     ),
 }
 

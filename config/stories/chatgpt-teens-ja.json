@@ -2,13 +2,22 @@
   "source_url": "https://openai.com/index/introducing-chatgpt-for-teens/",
   "published_at": "2026-08-18T00:00:00Z",
   "status": "ready",
+  "voice_pronunciations": {"ChatGPT": "チャットジーピーティー"},
   "claims": [
     {
-      "text": "OpenAIは13歳から17歳向けのChatGPT for Teensを発表した",
+      "text": "18歳未満には、学習、安全性、健全な利用をまとめた専用のChatGPT体験が標準適用される",
       "source_url": "https://openai.com/index/introducing-chatgpt-for-teens/"
     },
     {
-      "text": "ChatGPT for Teensは学習や創作を支援し、安全性に配慮した10代向けの体験である",
+      "text": "10代向け体験は答えを直接渡すより、段階的な説明や問いかけで学習者自身の思考を促す",
+      "source_url": "https://openai.com/index/introducing-chatgpt-for-teens/"
+    },
+    {
+      "text": "自傷、暴力、摂食障害、危険行為、性的・刺激の強い内容には18歳未満向けの保護が適用される",
+      "source_url": "https://openai.com/index/introducing-chatgpt-for-teens/"
+    },
+    {
+      "text": "長時間利用時の休憩促進、AIであることの表示、恋愛的・依存的な振る舞いを避ける設計を含む",
       "source_url": "https://openai.com/index/introducing-chatgpt-for-teens/"
     }
   ],
@@ -16,32 +25,45 @@
     {
       "start": 0.0,
       "end": 3.0,
-      "narration": "ChatGPTに、13歳から17歳向けの新しい体験です。",
-      "caption": "ChatGPT、\n13〜17歳向けに"
+      "label": "AI NEWS",
+      "narration": "10代は、専用のチャットジーピーティー体験へ。",
+      "caption": "10代は専用\nChatGPTへ",
+      "subcaption": "学習・安全・依存対策をまとめた新体験"
     },
     {
       "start": 3.0,
-      "end": 7.0,
-      "narration": "つまり、13歳から17歳が使いやすいChatGPTです。",
-      "caption": "13〜17歳が使いやすい\nChatGPTです"
+      "end": 6.0,
+      "label": "つまり、何？",
+      "narration": "つまり、すぐ答えを出すより、いっしょに考える方向のチャットジーピーティーです。",
+      "caption": "答えを出すより\n考えさせるAIに"
     },
     {
-      "start": 7.0,
-      "end": 11.0,
-      "narration": "学習や創作を支えながら、安全面にも配慮されています。",
-      "caption": "学習を助けながら\n安全面にも配慮"
+      "start": 6.0,
+      "end": 9.0,
+      "label": "ここが新しい",
+      "narration": "危険な内容への保護も、18歳未満向けに標準で強化されます。",
+      "caption": "危険な内容への保護を\n標準で強化"
     },
     {
-      "start": 11.0,
-      "end": 13.0,
-      "narration": "AIニュース速報、AIツールウォッチ。",
+      "start": 9.0,
+      "end": 12.0,
+      "label": "さらに",
+      "narration": "使いすぎや、エーアイへの依存を抑える工夫まで入っています。",
+      "caption": "使いすぎや依存も\n抑える設計"
+    },
+    {
+      "start": 12.0,
+      "end": 14.0,
+      "label": "AIニュース速報",
+      "narration": "エーアイニュース速報、エーアイツールウォッチ。",
       "caption": "AIツールウォッチ"
     }
   ],
   "shots": [
-    {"start": 0.0, "end": 3.0, "visual": "大きな10代の学生とChatGPT利用場面。見出し込みでSNSサムネイルとして成立"},
-    {"start": 3.0, "end": 7.0, "visual": "学生がPCでAIに勉強を相談するエディトリアルイラスト"},
-    {"start": 7.0, "end": 11.0, "visual": "学生へのAI学習支援と安全な環境が一枚で伝わるイラスト"},
-    {"start": 11.0, "end": 13.0, "visual": "控えめなAIニュース速報／AIツールウォッチのブランドアウトロ"}
+    {"start": 0.0, "end": 3.0, "visual": "発見に少し驚く10代の学生を大きく見せ、見出し込みでSNSサムネイルとして成立"},
+    {"start": 3.0, "end": 6.0, "visual": "学生が問題に向き合い、AIが答えではなくヒントと問い返しを示す"},
+    {"start": 6.0, "end": 9.0, "visual": "危険な内容を描かず、学生を包む安全ガードを直感的に見せる"},
+    {"start": 9.0, "end": 12.0, "visual": "休憩と時間管理を取り入れ、学生とAIが適切な距離で共存する"},
+    {"start": 12.0, "end": 14.0, "visual": "控えめなAIニュース速報／AIツールウォッチのブランドアウトロ"}
   ]
 }

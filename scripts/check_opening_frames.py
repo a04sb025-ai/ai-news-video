@@ -14,7 +14,12 @@ checks = {
     "opening_is_exactly_3s": opening["start"] == 0 and opening["end"] == 3,
     "headline_max_2_lines": len(opening["caption"].splitlines()) <= 2,
     "headline_is_concise": all(len(line) <= 18 for line in opening["caption"].splitlines()),
-    "headline_identifies_product_and_age": "ChatGPT" in opening["caption"] and "13〜17" in opening["caption"],
+    "headline_identifies_product_and_audience": (
+        "ChatGPT" in opening["caption"] and any(term in opening["caption"] for term in ("10代", "13〜17"))
+    ),
+    "opening_explains_why_it_matters": all(
+        term in opening.get("subcaption", "") for term in ("学習", "安全", "依存対策")
+    ),
 }
 frames = []
 for seconds in (0.5, 1.5, 2.5):

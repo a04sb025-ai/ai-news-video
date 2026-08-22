@@ -25,9 +25,11 @@ class ScaffoldTest(unittest.TestCase):
         self.assertTrue(all(claim["source_url"] == story["source_url"] for claim in story["claims"]))
         self.assertEqual(story["script"][0]["start"], 0)
         self.assertEqual(story["script"][0]["end"], 3)
-        self.assertEqual(story["script"][-1]["end"], 13)
+        self.assertEqual([cue["end"] for cue in story["script"]], [3, 6, 9, 12, 14])
         self.assertIn("ChatGPT", story["script"][0]["caption"])
-        self.assertIn("13〜17", story["script"][0]["caption"])
+        self.assertIn("10代", story["script"][0]["caption"])
+        self.assertEqual(story["voice_pronunciations"]["ChatGPT"], "チャットジーピーティー")
+        self.assertTrue(all("ChatGPT" not in cue["narration"] for cue in story["script"]))
         for current, following in zip(story["script"], story["script"][1:]):
             self.assertEqual(current["end"], following["start"])
         for cue in story["script"]:
@@ -37,7 +39,7 @@ class ScaffoldTest(unittest.TestCase):
     def test_workflow_supports_dedicated_and_generic_rendering(self):
         workflow = (ROOT / ".github/workflows/render-video.yml").read_text()
         self.assertIn("default: teen_chatgpt", workflow)
-        self.assertIn("run: make render-teen-news", workflow)
+        self.assertIn("make render-teen-news", workflow)
         self.assertIn("if: inputs.render_target == 'generic_url'", workflow)
         self.assertIn("python3 scripts/prepare_story.py", workflow)
         self.assertIn("config/stories/chatgpt-teens-ja.json", workflow)
@@ -45,14 +47,15 @@ class ScaffoldTest(unittest.TestCase):
         self.assertIn("continue-on-error: true", workflow)
         self.assertIn("scripts/check_opening_frames.py", workflow)
         self.assertIn("reports/opening", workflow)
-    def test_image_provider_has_three_safe_cached_assets(self):
+    def test_image_provider_has_four_safe_cached_assets(self):
         generator = (ROOT / "scripts/generate_story_images.py").read_text()
         config = json.loads((ROOT / "config/image-generation.json").read_text())
         self.assertEqual(config["provider"], "openai")
         self.assertEqual(config["api_key_env"], "OPENAI_API_KEY")
         self.assertEqual(generator.count('"scene-teen-hero.png":'), 1)
-        self.assertEqual(generator.count('"scene-teen-chat.png":'), 1)
-        self.assertEqual(generator.count('"scene-learning-safety.png":'), 1)
+        self.assertEqual(generator.count('"scene-teen-thinking.png":'), 1)
+        self.assertEqual(generator.count('"scene-teen-safety.png":'), 1)
+        self.assertEqual(generator.count('"scene-teen-healthy-use.png":'), 1)
         self.assertIn("destination.is_file()", generator)
         self.assertNotIn("print(api_key", generator)
 if __name__ == "__main__": unittest.main()

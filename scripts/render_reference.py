@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Render a lively, zero-API vertical news short from a story JSON file."""
 import json
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import wave
 from pathlib import Path
 
 
@@ -20,13 +22,16 @@ if not dictionary or not voice:
     raise SystemExit("Open JTalk dictionary/voice not found")
 
 WIDTH, HEIGHT = 1080, 1920
-FPS, DURATION = 30, 13
+FPS = 30
+DURATION = story["script"][-1]["end"]
+SAFE_OPENING = os.environ.get("OPENING_SAFE_MODE") == "1"
 PALETTE = ["18213A", "122E3A", "25304A", "111827"]
 ASSET_DIR = Path(__file__).resolve().parents[1] / "assets/generated"
 STORY_IMAGES = [
     ASSET_DIR / "scene-teen-hero.png",
-    ASSET_DIR / "scene-teen-chat.png",
-    ASSET_DIR / "scene-learning-safety.png",
+    ASSET_DIR / "scene-teen-thinking.png",
+    ASSET_DIR / "scene-teen-safety.png",
+    ASSET_DIR / "scene-teen-healthy-use.png",
 ]
 USE_STORY_IMAGES = all(image.is_file() and image.stat().st_size > 0 for image in STORY_IMAGES)
 
@@ -63,11 +68,39 @@ with tempfile.TemporaryDirectory() as directory:
     tmp = Path(directory)
     wav = tmp / "voice.wav"
     ass = tmp / "motion.ass"
-    narration = tmp / "narration.txt"
-    narration.write_text("\n".join(cue["narration"] for cue in story["script"]))
+    cue_wavs = []
+    cue_durations = []
+    for index, cue in enumerate(story["script"]):
+        narration = tmp / f"narration-{index}.txt"
+        raw_wav = tmp / f"voice-{index}-raw.wav"
+        fitted_wav = tmp / f"voice-{index}.wav"
+        narration.write_text(cue["narration"])
+        subprocess.run(
+            ["open_jtalk", "-x", str(dictionary), "-m", str(voice), "-r", "1.18", "-ow", str(raw_wav), str(narration)],
+            check=True,
+        )
+        with wave.open(str(raw_wav)) as audio:
+            raw_duration = audio.getnframes() / audio.getframerate()
+        slot = cue["end"] - cue["start"]
+        speed = max(1.0, raw_duration / max(slot - .12, .5))
+        filters = []
+        while speed > 2:
+            filters.append("atempo=2")
+            speed /= 2
+        filters.append(f"atempo={speed:.4f}")
+        filters.extend((f"apad=pad_dur={slot}", f"atrim=duration={slot}"))
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw_wav),
+             "-af", ",".join(filters), str(fitted_wav)], check=True,
+        )
+        cue_wavs.append(fitted_wav)
+        cue_durations.append(slot)
+    audio_inputs = [value for cue_wav in cue_wavs for value in ("-i", str(cue_wav))]
+    audio_filter = "".join(f"[{i}:a]apad,atrim=duration={duration}[a{i}];" for i, duration in enumerate(cue_durations))
+    audio_filter += "".join(f"[a{i}]" for i in range(len(cue_wavs))) + f"concat=n={len(cue_wavs)}:v=0:a=1[out]"
     subprocess.run(
-        ["open_jtalk", "-x", str(dictionary), "-m", str(voice), "-r", "1.18", "-ow", str(wav), str(narration)],
-        check=True,
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *audio_inputs,
+         "-filter_complex", audio_filter, "-map", "[out]", str(wav)], check=True,
     )
 
     header = f"""[Script Info]
@@ -94,7 +127,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     for index, cue in enumerate(story["script"]):
         start, end = cue["start"], cue["end"]
         color = PALETTE[index % len(PALETTE)]
-        if not (USE_STORY_IMAGES and index in (0, 1, 2)):
+        if not (USE_STORY_IMAGES and index < len(STORY_IMAGES)):
             events.append(vector(start, end, rect_path(0, 0, WIDTH, HEIGHT), color))
         # Progress rail makes the short structure readable at a glance.
         events.append(vector(start, end, rect_path(72, 1735, 936, 8), "4A526A", layer=1))
@@ -102,14 +135,15 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         events.append(vector(start, end, rect_path(72, 1735, progress, 8), "58D6FF", layer=2))
 
         if index == 0:
-            events.append(dialogue(start, end, "Eyebrow", "AI NEWS  •  13 SEC", r"\fad(100,100)", 3))
+            events.append(dialogue(start, end, "Eyebrow", cue.get("label", "AI NEWS"), r"\fad(100,100)", 3))
             # The opening is a thumbnail: image/subject first, one large conclusion, no decorative hero icon.
-            events.append(vector(start, end, rect_path(42, 165, 996, 530), "101528", r"\alpha&H28&\fad(80,80)", 2))
+            panel_alpha = "&H08&" if SAFE_OPENING else "&H28&"
+            events.append(vector(start, end, rect_path(42, 165, 996, 530), "101528", rf"\alpha{panel_alpha}\fad(80,80)", 2))
             events.append(vector(start, end, rect_path(70, 205, 16, 360), "58D6FF", r"\fad(80,80)", 3))
             events.append(dialogue(start, end, "Headline", cue["caption"], r"\an7\pos(112,255)\fad(80,80)", 4))
-            events.append(dialogue(start, end, "Small", "OpenAIが新しい10代向け体験", r"\an7\pos(115,610)\fs36\bord2\fad(100,80)", 4))
+            events.append(dialogue(start, end, "Small", cue.get("subcaption", ""), r"\an7\pos(115,610)\fs34\bord2\fad(100,80)", 4))
         elif index == 1:
-            events.append(dialogue(start, end, "Eyebrow", "つまり、何？", r"\fad(100,100)", 3))
+            events.append(dialogue(start, end, "Eyebrow", cue.get("label", "つまり、何？"), r"\fad(100,100)", 3))
             if not USE_STORY_IMAGES:
                 events.append(vector(start, end, rect_path(145, 430, 790, 690), "FFFFFF", r"\fad(120,100)", 2))
                 events.append(vector(start + .20, end, rect_path(220, 545, 520, 100), "EAF2FF", r"\fad(100,100)", 3))
@@ -119,7 +153,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             events.append(vector(start, end, rect_path(52, 1310, 976, 390), "101528", r"\alpha&H18&\fad(120,100)", 3))
             events.append(dialogue(start, end, "Caption", cue["caption"], r"\fad(120,100)", 4))
         elif index == 2:
-            events.append(dialogue(start, end, "Eyebrow", "ここがポイント", r"\fad(100,100)", 3))
+            events.append(dialogue(start, end, "Eyebrow", cue.get("label", "ここがポイント"), r"\fad(100,100)", 3))
             if not USE_STORY_IMAGES:
                 events.append(vector(start, end, rect_path(100, 440, 405, 610), "FFF3C4", r"\fad(100,100)", 2))
                 events.append(vector(start + .20, end, rect_path(575, 440, 405, 610), "C9F7FF", r"\fad(100,100)", 2))
@@ -128,6 +162,13 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 events.append(vector(start + .20, end, "m 775 555 l 900 605 875 785 b 865 850 815 890 775 910 b 735 890 685 850 675 785 l 650 605", "58D6FF", r"\fad(100,100)", 3))
                 events.append(dialogue(start, end, "Label", "学 習", r"\pos(300,940)\fs44\fad(100,100)", 4))
                 events.append(dialogue(start + .20, end, "Label", "安 全", r"\pos(775,940)\fs44\fad(100,100)", 4))
+            events.append(vector(start, end, rect_path(52, 1310, 976, 390), "101528", r"\alpha&H18&\fad(120,100)", 3))
+            events.append(dialogue(start, end, "Caption", cue["caption"], r"\fad(120,100)", 4))
+        elif index < len(story["script"]) - 1:
+            events.append(dialogue(start, end, "Eyebrow", cue.get("label", "さらに"), r"\fad(100,100)", 3))
+            if not USE_STORY_IMAGES:
+                events.append(vector(start, end, rect_path(145, 470, 790, 610), "C9F7FF", r"\fad(120,100)", 2))
+                events.append(dialogue(start, end, "Label", "休 憩", r"\pos(540,760)\fs72\fad(100,100)", 4))
             events.append(vector(start, end, rect_path(52, 1310, 976, 390), "101528", r"\alpha&H18&\fad(120,100)", 3))
             events.append(dialogue(start, end, "Caption", cue["caption"], r"\fad(120,100)", 4))
         else:
@@ -143,23 +184,24 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     if USE_STORY_IMAGES:
         for image in STORY_IMAGES:
             command.extend(["-loop", "1", "-i", str(image)])
-        filters = (
-            f"[2:v]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT},"
-            f"zoompan=z='min(zoom+0.00035,1.035)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-            f"d=90:s={WIDTH}x{HEIGHT}:fps={FPS},fade=t=in:st=0:d=0.12:alpha=1,setpts=PTS[hero];"
-            f"[3:v]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT},"
-            f"zoompan=z='min(zoom+0.0006,1.05)':x='iw/2-(iw/zoom/2)+10*sin(on/30)':"
-            f"y='ih/2-(ih/zoom/2)':d=120:s={WIDTH}x{HEIGHT}:fps={FPS},"
-            "fade=t=in:st=0:d=0.2:alpha=1,setpts=PTS+3/TB[teen];"
-            f"[4:v]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT},"
-            f"zoompan=z='min(zoom+0.0006,1.05)':x='iw/2-(iw/zoom/2)':"
-            f"y='ih/2-(ih/zoom/2)+8*cos(on/35)':d=120:s={WIDTH}x{HEIGHT}:fps={FPS},"
-            "fade=t=in:st=0:d=0.2:alpha=1,setpts=PTS+7/TB[safety];"
-            "[0:v][hero]overlay=enable='between(t,0,3)'[withhero];"
-            "[withhero][teen]overlay=enable='between(t,3,7)'[withteen];"
-            "[withteen][safety]overlay=enable='between(t,7,11)',"
+        scene_streams = []
+        for offset, (start, end) in enumerate(((0, 3), (3, 6), (6, 9), (9, 12)), start=2):
+            duration_frames = round((end - start) * FPS)
+            zoom = "0.00035" if start == 0 else "0.0006"
+            scene_streams.append(
+                f"[{offset}:v]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT},"
+                f"zoompan=z='min(zoom+{zoom},1.05)':x='iw/2-(iw/zoom/2)':"
+                f"y='ih/2-(ih/zoom/2)':d={duration_frames}:s={WIDTH}x{HEIGHT}:fps={FPS},"
+                f"fade=t=in:st=0:d=0.12:alpha=1,setpts=PTS+{start}/TB[scene{offset}];"
+            )
+        overlays = (
+            "[0:v][scene2]overlay=enable='between(t,0,3)'[v2];"
+            "[v2][scene3]overlay=enable='between(t,3,6)'[v3];"
+            "[v3][scene4]overlay=enable='between(t,6,9)'[v4];"
+            "[v4][scene5]overlay=enable='between(t,9,12)',"
             f"subtitles={ass}[video]"
         )
+        filters = "".join(scene_streams) + overlays
         command.extend(["-filter_complex", filters, "-map", "[video]", "-map", "1:a"])
     else:
         print("Story images unavailable; using motion-graphics fallback", file=sys.stderr)
