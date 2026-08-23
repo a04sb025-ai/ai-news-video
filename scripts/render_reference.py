@@ -35,8 +35,8 @@ STORY_IMAGES = [ASSET_DIR / name for name in story.get("image_assets", [
 ])]
 USE_STORY_IMAGES = len(STORY_IMAGES) == 4 and all(image.is_file() and image.stat().st_size > 0 for image in STORY_IMAGES)
 IS_DAILY = "content_hash" in story
-MOZO_REFERENCE = ROOT / story.get("opening", {}).get(
-    "character_reference", "assets/visual-references/mozo/mozo-character-reference.png"
+MOZO_OPENING_ASSET = ROOT / story.get("opening", {}).get(
+    "character_asset", "assets/visual-references/mozo/mozo-opening.png"
 )
 
 
@@ -48,7 +48,7 @@ def valid_png(path):
         return False
 
 
-USE_MOZO_REFERENCE = IS_DAILY and valid_png(MOZO_REFERENCE)
+USE_MOZO_OPENING_ASSET = IS_DAILY and valid_png(MOZO_OPENING_ASSET)
 
 
 def stamp(seconds):
@@ -195,7 +195,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             # PNG is composited later, above this card, from frame zero to 2.967s.
             events.append(vector(start, end, "m 405 1410 b 405 1365 445 1345 500 1352 l 885 1352 b 940 1355 965 1390 958 1440 l 950 1490 b 940 1535 900 1555 845 1548 l 530 1548 b 475 1550 430 1525 425 1482 l 370 1530 395 1460 b 390 1440 395 1420 405 1410", "FFF4D6", layer=6))
             events.append(dialogue(start, end, "Label", template["bubble"], r"\pos(670,1460)\fs46", 7))
-            if not USE_MOZO_REFERENCE:
+            if not USE_MOZO_OPENING_ASSET:
                 # Technical-only fallback: keep the layout renderable, but never
                 # claim that this neutral marker is the official character.
                 events.append(vector(start, end, "m 95 1590 b 80 1460 145 1370 245 1385 b 350 1400 390 1510 360 1650 b 330 1770 125 1780 95 1590", "F8F5ED", layer=6))
@@ -250,13 +250,13 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         "ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c=0x18213A:s={WIDTH}x{HEIGHT}:r={FPS}:d={DURATION}",
         "-i", str(wav),
     ]
-    if USE_MOZO_REFERENCE:
-        command.extend(["-loop", "1", "-i", str(MOZO_REFERENCE)])
+    if USE_MOZO_OPENING_ASSET:
+        command.extend(["-loop", "1", "-i", str(MOZO_OPENING_ASSET)])
     if USE_STORY_IMAGES:
         for image in STORY_IMAGES:
             command.extend(["-loop", "1", "-i", str(image)])
         scene_streams = []
-        image_start = 3 if USE_MOZO_REFERENCE else 2
+        image_start = 3 if USE_MOZO_OPENING_ASSET else 2
         for offset, (start, end) in enumerate(((0, 3), (3, 6), (6, 9), (9, 12)), start=image_start):
             duration_frames = round((end - start) * FPS)
             zoom = "0" if start == 0 else "0.0006"
@@ -272,7 +272,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         overlays += f"[v2][scene{scene_ids[1]}]overlay=enable='between(t,3,6)'[v3];"
         overlays += f"[v3][scene{scene_ids[2]}]overlay=enable='between(t,6,9)'[v4];"
         overlays += f"[v4][scene{scene_ids[3]}]overlay=enable='between(t,9,12)'[base];"
-        if USE_MOZO_REFERENCE:
+        if USE_MOZO_OPENING_ASSET:
             overlays += "[2:v]scale=330:-1[mozo];[base][mozo]overlay=70:1360:enable='between(t,0,3)'[withmozo];"
             overlays += f"[withmozo]subtitles={ass}[video]"
         else:
@@ -281,7 +281,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         command.extend(["-filter_complex", filters, "-map", "[video]", "-map", "1:a"])
     else:
         print("Story images unavailable; using motion-graphics fallback", file=sys.stderr)
-        if USE_MOZO_REFERENCE:
+        if USE_MOZO_OPENING_ASSET:
             command.extend(["-filter_complex", f"[2:v]scale=330:-1[mozo];[0:v][mozo]overlay=70:1360:enable='between(t,0,3)',subtitles={ass}[video]", "-map", "[video]", "-map", "1:a"])
         else:
             command.extend(["-vf", f"subtitles={ass}"])
@@ -302,9 +302,9 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     finally:
         temporary_output.unlink(missing_ok=True)
 manifest = {"content_hash": story.get("content_hash"), "used_generated_images": USE_STORY_IMAGES,
-            "used_mozo_reference": USE_MOZO_REFERENCE,
-            "mozo_reference": str(MOZO_REFERENCE) if USE_MOZO_REFERENCE else None,
-            "mozo_reference_sha256": hashlib.sha256(MOZO_REFERENCE.read_bytes()).hexdigest() if USE_MOZO_REFERENCE else None,
+            "used_mozo_opening_asset": USE_MOZO_OPENING_ASSET,
+            "mozo_opening_asset": str(MOZO_OPENING_ASSET) if USE_MOZO_OPENING_ASSET else None,
+            "mozo_opening_asset_sha256": hashlib.sha256(MOZO_OPENING_ASSET.read_bytes()).hexdigest() if USE_MOZO_OPENING_ASSET else None,
             "image_directory": str(ASSET_DIR),
             "images": [str(image) for image in STORY_IMAGES] if USE_STORY_IMAGES else []}
 output.with_suffix(".render.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")

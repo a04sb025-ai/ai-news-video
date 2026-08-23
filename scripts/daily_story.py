@@ -12,7 +12,8 @@ MAX_TEXT = {"headline": 80, "hook": 120, "summary": 240, "point": 160}
 REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 SPOKEN_CHARACTER_BUDGET = 24
 VISUAL_STANDARD = "ai-news-visual-v1"
-MOZO_REFERENCE = "assets/visual-references/mozo/mozo-character-reference.png"
+MOZO_DESIGN_REFERENCE = "assets/visual-references/mozo/mozo-character-reference.png"
+MOZO_OPENING_ASSET = "assets/visual-references/mozo/mozo-opening.png"
 TEMPLATES = {
     "mechanism": {"name": "A", "kind": "仕組み解説", "bubble": "ここがポイント"},
     "announcement": {"name": "B", "kind": "新機能・新発表", "bubble": "何が変わる？"},
@@ -160,7 +161,8 @@ def build_story(payload):
         "visual_template": {"id": template["name"], "key": template_key,
                             "kind": template["kind"], "bubble": template["bubble"]},
         "opening": {"start": 0.0, "end": 3.0, "major_elements_static": True,
-                    "character": "mozo", "character_reference": MOZO_REFERENCE,
+                    "character": "mozo", "character_reference": MOZO_DESIGN_REFERENCE,
+                    "character_asset": MOZO_OPENING_ASSET,
                     "headline_source": "verified_headline"},
         "claims": [{"text": value, "source_url": payload["source_url"]}
                    for value in [payload["headline"], payload["hook"], payload["summary"], *points]],

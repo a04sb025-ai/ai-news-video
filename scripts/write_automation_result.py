@@ -45,10 +45,13 @@ def generated_images_ready(story, video):
     return bool(correct_dir and files_ok and log_ok and rendered)
 
 
-def mozo_reference_ready(story, video):
-    """Require evidence that the renderer used the exact official PNG bytes."""
-    expected = story.get("opening", {}).get("character_reference")
-    if expected != "assets/visual-references/mozo/mozo-character-reference.png":
+def mozo_opening_asset_ready(story, video):
+    """Require evidence that the approved character-only PNG was composited."""
+    opening = story.get("opening", {})
+    if opening.get("character_reference") != "assets/visual-references/mozo/mozo-character-reference.png":
+        return False
+    expected = opening.get("character_asset")
+    if expected != "assets/visual-references/mozo/mozo-opening.png":
         return False
     path = canonical_path(expected)
     try:
@@ -58,9 +61,9 @@ def mozo_reference_ready(story, video):
     except OSError:
         return False
     render = read_json(video.with_suffix(".render.json"))
-    return bool(png_ok and render.get("used_mozo_reference") is True
-                and canonical_path(render.get("mozo_reference", "")) == path
-                and render.get("mozo_reference_sha256") == digest)
+    return bool(png_ok and render.get("used_mozo_opening_asset") is True
+                and canonical_path(render.get("mozo_opening_asset", "")) == path
+                and render.get("mozo_opening_asset_sha256") == digest)
 
 
 def build_result(story, video, reports, story_valid=True):
@@ -81,7 +84,7 @@ def build_result(story, video, reports, story_valid=True):
         "size_under_25_mib": video.is_file() and video.stat().st_size <= 25 * 1024 * 1024,
     }
     if story.get("visual_standard") == "ai-news-visual-v1":
-        checks["official_mozo_reference_used"] = mozo_reference_ready(story, video)
+        checks["approved_mozo_opening_asset_used"] = mozo_opening_asset_ready(story, video)
     success = all(checks.values())
     used = generated_images_ready(story, video) if story_valid else False
     details = {key: {"passed": value, "reason": (

@@ -46,7 +46,7 @@ class DailyStoryTest(unittest.TestCase):
   self.assertIn('template["key"] == "mechanism"',source); self.assertIn('template["key"] == "comparison"',source)
   opening=source.split("if index == 0:",1)[1].split("elif index == 1:",1)[0]
   self.assertIn("canonical Mozo",opening); self.assertNotIn(r"\fad",opening)
-  self.assertIn("MOZO_REFERENCE",source); self.assertIn('"used_mozo_reference"',source)
+  self.assertIn("MOZO_OPENING_ASSET",source); self.assertIn('"used_mozo_opening_asset"',source)
   prompt=(ROOT/"scripts/generate_story_images.py").read_text()
   self.assertIn("do not imitate any YouTube Short",prompt); self.assertIn("No Matrix rain",prompt)
  def test_invalid_json(self):
@@ -124,12 +124,12 @@ class DailyStoryTest(unittest.TestCase):
    try:
     os.chdir(root); story=daily.build_story(valid()); image_dir=Path(story["image_asset_dir"]); image_dir.mkdir(parents=True)
     video=(root/"video.mp4"); video.write_bytes(b"video")
-    mozo=root/"assets/visual-references/mozo/mozo-character-reference.png"; mozo.parent.mkdir(parents=True)
+    mozo=root/"assets/visual-references/mozo/mozo-opening.png"; mozo.parent.mkdir(parents=True)
     mozo.write_bytes(b"\x89PNG\r\n\x1a\n"+b"reference"*8)
     for name in story["image_assets"]: (image_dir/name).write_bytes(b"png")
     log={"status":"complete","content_hash":story["content_hash"],"expected_images":story["image_assets"],"images":[{"file":n,"result":"generated"} for n in story["image_assets"]]}; (image_dir/"image-generation-log.json").write_text(json.dumps(log))
     import hashlib
-    absolute=image_dir.resolve(); render={"used_generated_images":True,"content_hash":story["content_hash"],"image_directory":str(absolute),"images":[str(absolute/n) for n in story["image_assets"]],"used_mozo_reference":True,"mozo_reference":str(mozo),"mozo_reference_sha256":hashlib.sha256(mozo.read_bytes()).hexdigest()}; video.with_suffix(".render.json").write_text(json.dumps(render))
+    absolute=image_dir.resolve(); render={"used_generated_images":True,"content_hash":story["content_hash"],"image_directory":str(absolute),"images":[str(absolute/n) for n in story["image_assets"]],"used_mozo_opening_asset":True,"mozo_opening_asset":str(mozo),"mozo_opening_asset_sha256":hashlib.sha256(mozo.read_bytes()).hexdigest()}; video.with_suffix(".render.json").write_text(json.dumps(render))
     reports=root/"reports"; (reports/"opening").mkdir(parents=True); (reports/"opening/opening-qa.json").write_text(json.dumps({"passed":True,"frames":[{},{},{},{}]})); (reports/"voice-script-qa.json").write_text(json.dumps({"passed":True})); (reports/"qa.txt").write_text("PASS video\n"); (reports/"video-qa.json").write_text(json.dumps({"decode_error_free":{"passed":True,"reason":"ok"},"black_frame_check":{"passed":True,"reason":"ok"}}))
     decision=result.build_result(story,video,reports)
     self.assertTrue(decision["used_generated_images"]); self.assertTrue(decision["success"]); self.assertTrue(decision["auto_publish_ready"])
