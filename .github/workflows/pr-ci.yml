@@ -60,7 +60,7 @@ jobs:
           python3 scripts/check_story_voice.py work/ci-rich/story.json reports/ci-rich/voice-script-qa.json | tee reports/ci-rich/voice-script-qa.txt
           python3 scripts/render_explainer.py work/ci-rich/story.json "$VIDEO"
           scripts/opening_qa_with_correction.sh "$VIDEO" work/ci-rich/story.json reports/ci-rich/opening
-          python3 scripts/check_video.py "$VIDEO" | tee reports/ci-rich/qa.txt
+          python3 scripts/check_video.py "$VIDEO" work/ci-rich/story.json | tee reports/ci-rich/qa.txt
           python3 scripts/run_video_qa.py "$VIDEO" reports/ci-rich
           python3 scripts/write_automation_result.py work/ci-rich/story.json "$VIDEO" reports/ci-rich reports/ci-rich/automation-result.json
           python3 - <<'PY'
