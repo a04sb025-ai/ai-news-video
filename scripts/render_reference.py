@@ -64,6 +64,10 @@ def rect_path(x, y, width, height):
 
 
 output.parent.mkdir(parents=True, exist_ok=True)
+# Never expose an MP4 whose moov atom is still being written.  QA and uploaders only
+# see ``output`` after ffmpeg has closed, verified, and atomically renamed the file.
+temporary_output = output.with_name(f".{output.stem}.rendering{output.suffix}")
+temporary_output.unlink(missing_ok=True)
 with tempfile.TemporaryDirectory() as directory:
     tmp = Path(directory)
     wav = tmp / "voice.wav"
@@ -194,7 +198,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 
     ass.write_text(header + "\n".join(events) + "\n")
     command = [
-        "ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c=0x111827:s={WIDTH}x{HEIGHT}:r={FPS}:d={DURATION}",
+        "ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c=0x18213A:s={WIDTH}x{HEIGHT}:r={FPS}:d={DURATION}",
         "-i", str(wav),
     ]
     if USE_STORY_IMAGES:
@@ -225,9 +229,19 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     command.extend([
         "-af", f"apad=pad_dur={DURATION},loudnorm=I=-16:TP=-1.5:LRA=11", "-t", str(DURATION),
         "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
-        "-movflags", "+faststart", str(output),
+        "-movflags", "+faststart", str(temporary_output),
     ])
-    subprocess.run(command, check=True)
+    try:
+        subprocess.run(command, check=True)
+        # A complete decode before publication catches truncated tails and invalid
+        # packets while the temporary file can still be safely discarded.
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-v", "error", "-xerror", "-i", str(temporary_output), "-map", "0", "-f", "null", "-"],
+            check=True,
+        )
+        temporary_output.replace(output)
+    finally:
+        temporary_output.unlink(missing_ok=True)
 manifest = {"content_hash": story.get("content_hash"), "used_generated_images": USE_STORY_IMAGES,
             "image_directory": str(ASSET_DIR),
             "images": [str(image) for image in STORY_IMAGES] if USE_STORY_IMAGES else []}
