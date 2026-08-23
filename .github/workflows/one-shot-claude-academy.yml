@@ -2,6 +2,7 @@ name: One-shot Claude Academy video
 run-name: One shot Claude Academy / 20260823-claude-academy
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -17,6 +18,7 @@ permissions:
 jobs:
   render:
     if: >-
+      github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' && contains(github.event.head_commit.message, 'render Claude Academy test video')) ||
       (github.event_name == 'pull_request' && github.head_ref == 'automation/claude-academy-render')
     runs-on: ubuntu-24.04
@@ -67,16 +69,24 @@ jobs:
           python3 scripts/check_story_voice.py work/daily/story.json reports/voice-script-qa.json | tee reports/voice-script-qa.txt
           python3 scripts/render_reference.py work/daily/story.json "dist/$VIDEO_FILE"
       - name: Opening and scene QA
+        continue-on-error: true
         run: |
+          set +e
           scripts/opening_qa_with_correction.sh "dist/$VIDEO_FILE" work/daily/story.json reports/opening
+          status=$?
           python3 scripts/extract_review_frames.py "dist/$VIDEO_FILE" reports/scenes
+          exit $status
       - name: Automated video QA
+        continue-on-error: true
         run: |
+          set +e
           python3 scripts/check_video.py "dist/$VIDEO_FILE" | tee reports/qa.txt
-          ffmpeg -v error -i "dist/$VIDEO_FILE" -f null - 2> reports/decode-errors.txt
-          ffmpeg -i "dist/$VIDEO_FILE" -vf blackdetect=d=0.3 -an -f null - 2> reports/blackdetect.txt
+          status=${PIPESTATUS[0]}
+          python3 scripts/run_video_qa.py "dist/$VIDEO_FILE" reports
+          (( status |= $? ))
           ffmpeg -i "dist/$VIDEO_FILE" -vf freezedetect=n=-50dB:d=1 -an -f null - 2> reports/freezedetect.txt
           ffmpeg -i "dist/$VIDEO_FILE" -af loudnorm=print_format=json -f null - 2> reports/loudness.txt
+          exit $status
       - name: Write automation decision
         if: always()
         run: python3 scripts/write_automation_result.py work/daily/story.json "dist/$VIDEO_FILE" reports reports/automation-result.json
@@ -100,6 +110,10 @@ jobs:
           import json
           r=json.load(open('reports/automation-result.json'))
           print(json.dumps(r, ensure_ascii=False, indent=2))
-          assert r.get('success') is True
-          assert r.get('auto_publish_ready') is True
+          failed=[f"{name}: {r.get('qa_details', {}).get(name, {}).get('reason', 'check failed')}" for name, passed in r.get('qa', {}).items() if not passed]
+          print(f"AUTO PUBLISH READY: {str(r.get('auto_publish_ready') is True).lower()}")
+          print("\nFAILED CHECKS:")
+          print("\n".join(f"- {item}" for item in failed) or "- none")
+          if r.get('success') is not True or r.get('auto_publish_ready') is not True:
+              raise SystemExit("Video is not publishable; see FAILED CHECKS and diagnostic artifact")
           PY

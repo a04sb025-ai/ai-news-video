@@ -64,6 +64,10 @@ def rect_path(x, y, width, height):
 
 
 output.parent.mkdir(parents=True, exist_ok=True)
+# Never expose an MP4 whose moov atom is still being written.  QA and uploaders only
+# see ``output`` after ffmpeg has closed, verified, and atomically renamed the file.
+temporary_output = output.with_name(f".{output.stem}.rendering{output.suffix}")
+temporary_output.unlink(missing_ok=True)
 with tempfile.TemporaryDirectory() as directory:
     tmp = Path(directory)
     wav = tmp / "voice.wav"
@@ -140,13 +144,16 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 # it carries no facts or topic-specific iconography.
                 events.append(vector(start, end, rect_path(0, 720, WIDTH, 820), "E8EDF7", layer=1))
                 events.append(vector(start, end, rect_path(0, 1540, WIDTH, 195), "25304A", layer=1))
-            events.append(dialogue(start, end, "Eyebrow", cue.get("label", "AI NEWS"), r"\fad(100,100)", 3))
+            # 0-3s is a completed thumbnail, not an animated intro.  Every
+            # information-bearing element is fully opaque from the first frame
+            # through the last frame inside the opening interval.
+            events.append(dialogue(start, end, "Eyebrow", cue.get("label", "AI NEWS"), "", 3))
             # The opening is a thumbnail: image/subject first, one large conclusion, no decorative hero icon.
             panel_alpha = "&H08&" if SAFE_OPENING else "&H28&"
-            events.append(vector(start, end, rect_path(42, 165, 996, 530), "101528", rf"\alpha{panel_alpha}\fad(80,80)", 2))
-            events.append(vector(start, end, rect_path(70, 205, 16, 360), "58D6FF", r"\fad(80,80)", 3))
-            events.append(dialogue(start, end, "Headline", cue["caption"], r"\an7\pos(112,255)\fad(80,80)", 4))
-            events.append(dialogue(start, end, "Small", cue.get("subcaption", ""), r"\an7\pos(115,610)\fs34\bord2\fad(100,80)", 4))
+            events.append(vector(start, end, rect_path(42, 165, 996, 530), "101528", rf"\alpha{panel_alpha}", 2))
+            events.append(vector(start, end, rect_path(70, 205, 16, 360), "58D6FF", "", 3))
+            events.append(dialogue(start, end, "Headline", cue["caption"], r"\an7\pos(112,255)", 4))
+            events.append(dialogue(start, end, "Small", cue.get("subcaption", ""), r"\an7\pos(115,610)\fs34\bord2", 4))
         elif index == 1:
             events.append(dialogue(start, end, "Eyebrow", cue.get("label", "つまり、何？"), r"\fad(100,100)", 3))
             if not USE_STORY_IMAGES:
@@ -194,7 +201,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 
     ass.write_text(header + "\n".join(events) + "\n")
     command = [
-        "ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c=0x111827:s={WIDTH}x{HEIGHT}:r={FPS}:d={DURATION}",
+        "ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c=0x18213A:s={WIDTH}x{HEIGHT}:r={FPS}:d={DURATION}",
         "-i", str(wav),
     ]
     if USE_STORY_IMAGES:
@@ -204,11 +211,12 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         for offset, (start, end) in enumerate(((0, 3), (3, 6), (6, 9), (9, 12)), start=2):
             duration_frames = round((end - start) * FPS)
             zoom = "0.00035" if start == 0 else "0.0006"
+            opening_fade = "" if start == 0 else "fade=t=in:st=0:d=0.12:alpha=1,"
             scene_streams.append(
                 f"[{offset}:v]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT},"
                 f"zoompan=z='min(zoom+{zoom},1.05)':x='iw/2-(iw/zoom/2)':"
                 f"y='ih/2-(ih/zoom/2)':d={duration_frames}:s={WIDTH}x{HEIGHT}:fps={FPS},"
-                f"fade=t=in:st=0:d=0.12:alpha=1,setpts=PTS+{start}/TB[scene{offset}];"
+                f"{opening_fade}setpts=PTS+{start}/TB[scene{offset}];"
             )
         overlays = (
             "[0:v][scene2]overlay=enable='between(t,0,3)'[v2];"
@@ -225,9 +233,19 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     command.extend([
         "-af", f"apad=pad_dur={DURATION},loudnorm=I=-16:TP=-1.5:LRA=11", "-t", str(DURATION),
         "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
-        "-movflags", "+faststart", str(output),
+        "-movflags", "+faststart", str(temporary_output),
     ])
-    subprocess.run(command, check=True)
+    try:
+        subprocess.run(command, check=True)
+        # A complete decode before publication catches truncated tails and invalid
+        # packets while the temporary file can still be safely discarded.
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-v", "error", "-xerror", "-i", str(temporary_output), "-map", "0", "-f", "null", "-"],
+            check=True,
+        )
+        temporary_output.replace(output)
+    finally:
+        temporary_output.unlink(missing_ok=True)
 manifest = {"content_hash": story.get("content_hash"), "used_generated_images": USE_STORY_IMAGES,
             "image_directory": str(ASSET_DIR),
             "images": [str(image) for image in STORY_IMAGES] if USE_STORY_IMAGES else []}

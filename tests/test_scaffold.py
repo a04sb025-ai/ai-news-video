@@ -49,6 +49,10 @@ class ScaffoldTest(unittest.TestCase):
         self.assertIn("scripts/extract_review_frames.py", workflow)
         self.assertIn("reports/opening", workflow)
         self.assertIn("reports/scenes", workflow)
+    def test_claude_academy_workflow_supports_manual_dispatch(self):
+        workflow = (ROOT / ".github/workflows/one-shot-claude-academy.yml").read_text()
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
     def test_image_provider_has_four_safe_cached_assets(self):
         generator = (ROOT / "scripts/generate_story_images.py").read_text()
         config = json.loads((ROOT / "config/image-generation.json").read_text())
