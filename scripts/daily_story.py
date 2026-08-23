@@ -11,7 +11,12 @@ from urllib.parse import urlparse
 MAX_TEXT = {"headline": 80, "hook": 120, "summary": 240, "point": 160}
 REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 SPOKEN_CHARACTER_BUDGET = 24
+RICH_SPOKEN_CHARACTER_BUDGET = 58
+RICH_SCENE_SECONDS = 4.5
+RICH_OUTRO_SECONDS = 1.5
+RICH_PAGE_ROLES = ("hook", "fact", "issue", "conclusion")
 VISUAL_STANDARD = "ai-news-visual-v1"
+EXPLANATION_CONTRACT = "four-page-v1"
 MOZO_DESIGN_REFERENCE = "assets/visual-references/mozo/mozo-character-reference.png"
 MOZO_OPENING_ASSET = "assets/visual-references/mozo/mozo-opening.png"
 TEMPLATES = {
@@ -26,9 +31,8 @@ def select_template(payload):
     text = " ".join(str(payload.get(key, "")) for key in ("headline", "hook", "summary"))
     text += " " + " ".join(payload.get("points", []))
     comparison = ("比較", "違い", "変更", "従来", "以前より", "改善", "刷新", "アップデート", "Before", "After")
-    mechanism = ("仕組み", "なぜ", "どういう", "方法", "流れ", "透かし", "検出", "生成", "動作")
+    mechanism = ("仕組み", "なぜ", "どういう", "方法", "流れ", "透かし", "検出", "生成", "動作", "合法", "違法", "争点")
     announcement = ("公開", "発表", "新機能", "提供", "開始", "リリース", "登場", "正式")
-    # Explicit comparisons win, then explanatory stories, then announcements.
     if any(word in text for word in comparison):
         return "comparison"
     if any(word in text for word in mechanism):
@@ -36,6 +40,10 @@ def select_template(payload):
     if any(word in text for word in announcement):
         return "announcement"
     return "mechanism"
+
+
+def _valid_text(value, maximum):
+    return isinstance(value, str) and bool(value.strip()) and len(value) <= maximum
 
 
 def validate(payload):
@@ -50,8 +58,6 @@ def validate(payload):
         parsed = urlparse(value) if isinstance(value, str) else None
         if not parsed or parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
             errors.append(f"{field} must be an HTTPS URL")
-    # The producer supplies a verified primary URL. Refuse link shorteners and the
-    # AI Tool Watch article itself; semantic source verification remains upstream.
     source_host = (urlparse(payload.get("source_url", "")).hostname or "").lower()
     article_host = (urlparse(payload.get("article_url", "")).hostname or "").lower()
     if source_host and (source_host == article_host or source_host in {"bit.ly", "t.co", "tinyurl.com"}):
@@ -70,6 +76,29 @@ def validate(payload):
     terms = payload.get("narration_terms", {})
     if not isinstance(terms, dict) or any(not isinstance(k, str) or not isinstance(v, str) or not k or not v for k, v in terms.items()):
         errors.append("narration_terms must map non-empty strings to readings")
+
+    pages = payload.get("pages")
+    if pages is not None:
+        if not isinstance(pages, list) or len(pages) != 4:
+            errors.append("pages must contain exactly 4 items")
+        else:
+            for index, page in enumerate(pages):
+                prefix = f"page {index + 1}"
+                if not isinstance(page, dict):
+                    errors.append(f"{prefix} must be an object")
+                    continue
+                if page.get("page_role") != RICH_PAGE_ROLES[index]:
+                    errors.append(f"{prefix} must use role {RICH_PAGE_ROLES[index]}")
+                for field, maximum in (("headline", 36), ("support_text", 58), ("narration", 74),
+                                       ("subtitle", 74), ("visual_intent", 160), ("mozo_line", 14),
+                                       ("mozo_usage", 80)):
+                    if not _valid_text(page.get(field), maximum):
+                        errors.append(f"{prefix} {field} is required and must be at most {maximum} characters")
+                if isinstance(page.get("narration"), str) and isinstance(page.get("subtitle"), str) and page["subtitle"] != page["narration"]:
+                    errors.append(f"{prefix} subtitle must equal the full narration")
+                visuals = page.get("key_visuals")
+                if not isinstance(visuals, list) or not 2 <= len(visuals) <= 4 or any(not _valid_text(v, 32) for v in visuals):
+                    errors.append(f"{prefix} key_visuals must contain 2-4 non-empty items up to 32 characters")
     if errors:
         raise ValueError("; ".join(errors))
     return payload
@@ -115,6 +144,29 @@ def caption(text, limit=18):
     return left + "\n" + right
 
 
+def wrap_subtitle(text, limit=22, max_lines=3):
+    """Insert readability line breaks without removing any narration text."""
+    text = " ".join(text.split())
+    if not text:
+        raise ValueError("subtitle must not be empty")
+    if len(text) > limit * max_lines:
+        raise ValueError("subtitle is too long for three mobile-readable lines")
+    lines = []
+    remaining = text
+    while len(remaining) > limit:
+        lower = max(1, int(limit * 0.55))
+        candidates = [i for i in range(lower, min(limit, len(remaining) - 1) + 1)
+                      if remaining[i - 1] in BREAK_AFTER or remaining[i - 1].isspace()]
+        cut = max(candidates) if candidates else limit
+        lines.append(remaining[:cut].rstrip())
+        remaining = remaining[cut:].lstrip()
+    if remaining:
+        lines.append(remaining)
+    if len(lines) > max_lines:
+        raise ValueError("subtitle needs more than three lines")
+    return "\n".join(lines)
+
+
 def speak(text, terms):
     for written in sorted(terms, key=len, reverse=True):
         text = text.replace(written, terms[written])
@@ -139,7 +191,75 @@ def validate_narrations(narrations, terms, limit=SPOKEN_CHARACTER_BUDGET):
     return normalized
 
 
-def build_story(payload):
+def _base_story(payload, digest, terms, template_key):
+    template = TEMPLATES[template_key]
+    return {
+        "request_id": payload["request_id"], "content_hash": digest, "source_url": payload["source_url"],
+        "article_url": payload["article_url"], "status": "ready", "voice_pronunciations": terms,
+        "visual_standard": VISUAL_STANDARD,
+        "visual_template": {"id": template["name"], "key": template_key,
+                            "kind": template["kind"], "bubble": template["bubble"]},
+        "opening": {"start": 0.0, "end": 3.0, "major_elements_static": True,
+                    "character": "mozo", "character_reference": MOZO_DESIGN_REFERENCE,
+                    "character_asset": MOZO_OPENING_ASSET,
+                    "headline_source": "verified_headline"},
+        "image_asset_dir": f"assets/generated/{payload['request_id']}/{digest}/daily-editorial-v1",
+        "image_assets": [f"scene-{i}.png" for i in range(1, 5)],
+    }
+
+
+def build_rich_story(payload):
+    terms = payload.get("narration_terms", {})
+    pages = payload["pages"]
+    source_narrations = [page["narration"] for page in pages]
+    narrations = validate_narrations(source_narrations, terms, RICH_SPOKEN_CHARACTER_BUDGET)
+    labels = ["AI NEWS", "何が起きた？", "なぜ問題？", "結局どうなの？"]
+    script = []
+    for i, (page, narration) in enumerate(zip(pages, narrations)):
+        start = i * RICH_SCENE_SECONDS
+        end = (i + 1) * RICH_SCENE_SECONDS
+        script.append({
+            "start": start,
+            "end": end,
+            "label": labels[i],
+            "page_role": page["page_role"],
+            "caption": caption(page["headline"]),
+            "support_text": page["support_text"],
+            "source_narration": page["narration"],
+            "narration": narration,
+            "source_subtitle": page["subtitle"],
+            "subtitle": wrap_subtitle(page["subtitle"]),
+            "visual_intent": page["visual_intent"],
+            "key_visuals": page["key_visuals"],
+            "mozo_line": page["mozo_line"],
+            "mozo_usage": page["mozo_usage"],
+        })
+    outro_start = RICH_SCENE_SECONDS * 4
+    script.append({"start": outro_start, "end": outro_start + RICH_OUTRO_SECONDS, "label": "AIニュース速報",
+                   "caption": "AIツールウォッチ", "source_narration": "AIツールウォッチ。",
+                   "narration": "エーアイツールウォッチ。"})
+    digest = content_hash(payload)
+    template_key = select_template(payload)
+    story = _base_story(payload, digest, terms, template_key)
+    story.update({
+        "explanation_contract": EXPLANATION_CONTRACT,
+        "claims": [{"text": value, "source_url": payload["source_url"]}
+                   for page in pages for value in (page["headline"], page["support_text"], page["narration"])],
+        "script": script,
+        "shots": [{"start": cue["start"], "end": cue["end"], "visual": cue["visual_intent"]} for cue in script[:4]]
+                 + [{"start": outro_start, "end": outro_start + RICH_OUTRO_SECONDS, "visual": "控えめなアウトロ"}],
+        "image_scenes": [
+            {"role": page["page_role"],
+             "verified_content": f"{page['headline']} / {page['support_text']} / {page['narration']}",
+             "visual_intent": page["visual_intent"],
+             "key_visuals": page["key_visuals"]}
+            for page in pages
+        ],
+    })
+    return story
+
+
+def build_legacy_story(payload):
     terms = payload.get("narration_terms", {})
     points = payload["points"]
     captions = [caption(payload["headline"]), caption(payload["summary"]), caption(points[0]), caption(points[1])]
@@ -153,32 +273,28 @@ def build_story(payload):
                    "caption": "AIツールウォッチ", "narration": "エーアイツールウォッチ。"})
     digest = content_hash(payload)
     template_key = select_template(payload)
-    template = TEMPLATES[template_key]
-    return {
-        "request_id": payload["request_id"], "content_hash": digest, "source_url": payload["source_url"],
-        "article_url": payload["article_url"], "status": "ready", "voice_pronunciations": terms,
-        "visual_standard": VISUAL_STANDARD,
-        "visual_template": {"id": template["name"], "key": template_key,
-                            "kind": template["kind"], "bubble": template["bubble"]},
-        "opening": {"start": 0.0, "end": 3.0, "major_elements_static": True,
-                    "character": "mozo", "character_reference": MOZO_DESIGN_REFERENCE,
-                    "character_asset": MOZO_OPENING_ASSET,
-                    "headline_source": "verified_headline"},
+    story = _base_story(payload, digest, terms, template_key)
+    story.update({
         "claims": [{"text": value, "source_url": payload["source_url"]}
                    for value in [payload["headline"], payload["hook"], payload["summary"], *points]],
         "script": script,
         "shots": [{"start": i * 3.0, "end": (i + 1) * 3.0,
                    "visual": role} for i, role in enumerate(("何が起きた", "つまり何", "何が新しい", "視聴者に重要な追加点"))]
                  + [{"start": 12.0, "end": 14.0, "visual": "控えめなアウトロ"}],
-        "image_asset_dir": f"assets/generated/{payload['request_id']}/{digest}/daily-editorial-v1",
-        "image_assets": [f"scene-{i}.png" for i in range(1, 5)],
         "image_scenes": [
             {"role": "何が起きた", "verified_content": f"{payload['headline']} / {payload['hook']}"},
             {"role": "つまり何", "verified_content": payload["summary"]},
             {"role": "ここが新しい", "verified_content": points[0]},
             {"role": "追加の重要ポイント", "verified_content": " / ".join(points[1:])},
         ],
-    }
+    })
+    return story
+
+
+def build_story(payload):
+    if payload.get("pages") is not None:
+        return build_rich_story(payload)
+    return build_legacy_story(payload)
 
 
 def main():
