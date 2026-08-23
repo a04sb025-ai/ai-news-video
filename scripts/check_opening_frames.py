@@ -10,9 +10,11 @@ from pathlib import Path
 FPS = 30
 QA_FRAME_SIZE = (270, 480)
 OPENING_REGIONS = {
-    "headline": (90, 200, 990, 565),
-    "panel": (42, 165, 1038, 695),
-    "visual": (0, 695, 1080, 1540),
+    "headline": (90, 190, 990, 600),
+    "panel": (42, 150, 1038, 660),
+    "visual": (82, 700, 998, 1270),
+    "mozo": (75, 1360, 450, 1785),
+    "bubble": (390, 1370, 950, 1550),
 }
 
 
@@ -67,6 +69,13 @@ checks = {
     "headline_max_2_lines": len(opening["caption"].splitlines()) <= 2,
     "headline_is_concise": all(len(line) <= 18 for line in opening["caption"].splitlines()),
 }
+if "content_hash" in story:
+    checks.update({
+        "visual_standard_is_current": story.get("visual_standard") == "ai-news-visual-v1",
+        "template_is_supported": story.get("visual_template", {}).get("id") in {"A", "B", "C"},
+        "mozo_is_standard_character": story.get("opening", {}).get("character") == "mozo",
+        "major_elements_static_for_full_opening": story.get("opening", {}).get("major_elements_static") is True,
+    })
 layout_details = {
     "line_count": len(opening["caption"].splitlines()), "maximum_lines": 2,
     "maximum_characters_per_line": max(map(len, opening["caption"].splitlines()), default=0),
@@ -127,8 +136,9 @@ report = {
     "layout_details": layout_details,
     "reasons": [name for name, passed in checks.items() if not passed],
     "manual_review": [
-        "見出しがスマホで読める", "ニュース内容を推測できる", "主役画像が十分大きい",
-        "不要な空白が多すぎない", "字幕やUIが主役を邪魔しない", "スクロール中に目を引く",
+        "見出しがスマホで読め、safe area内にある", "ニュース内容を推測できる", "中央カードが1メッセージを示す",
+        "もぞが白目なし・左右非対称の既定デザインで、ニュースを邪魔しない", "背景が見出しを邪魔しない",
+        "0秒・1秒・2秒・opening最終フレームのどれも単独サムネイルとして成立する",
     ],
     "passed": all(checks.values()),
 }

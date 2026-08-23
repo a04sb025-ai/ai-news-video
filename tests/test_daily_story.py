@@ -33,6 +33,21 @@ class DailyStoryTest(unittest.TestCase):
  def test_valid_payload_and_structure(self):
   story=daily.build_story(daily.validate(valid()))
   self.assertEqual([x["end"] for x in story["script"]],[3,6,9,12,14]); self.assertNotIn("AI", "".join(x["narration"] for x in story["script"][:-1]))
+  self.assertEqual(story["visual_standard"], "ai-news-visual-v1"); self.assertEqual(story["opening"]["character"], "mozo")
+ def test_visual_template_selection(self):
+  payload=valid(); payload.update(headline="透かしの仕組み",hook="どういう仕組み？",summary="検出方法を説明します。")
+  self.assertEqual(daily.build_story(payload)["visual_template"]["id"], "A")
+  payload.update(headline="新機能を正式公開",hook="新機能です。",summary="提供を開始しました。")
+  self.assertEqual(daily.build_story(payload)["visual_template"]["id"], "B")
+  payload.update(headline="従来版から変更",hook="違いを比較します。",summary="以前より改善しました。")
+  self.assertEqual(daily.build_story(payload)["visual_template"]["id"], "C")
+ def test_mozo_and_three_cards_are_renderer_contracts(self):
+  source=(ROOT/"scripts/render_reference.py").read_text()
+  self.assertIn('template["key"] == "mechanism"',source); self.assertIn('template["key"] == "comparison"',source)
+  opening=source.split("if index == 0:",1)[1].split("elif index == 1:",1)[0]
+  self.assertIn("Canonical Mozo",opening); self.assertNotIn(r"\fad",opening)
+  prompt=(ROOT/"scripts/generate_story_images.py").read_text()
+  self.assertIn("do not imitate any YouTube Short",prompt); self.assertIn("No Matrix rain",prompt)
  def test_invalid_json(self):
   with tempfile.TemporaryDirectory() as d:
    src=Path(d)/"bad"; src.write_text("{"); run=subprocess.run([sys.executable,ROOT/"scripts/daily_story.py","prepare",src,Path(d)/"out"]); self.assertNotEqual(run.returncode,0)
