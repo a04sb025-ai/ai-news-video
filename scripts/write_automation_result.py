@@ -49,26 +49,29 @@ def build_result(story, video, reports, story_valid=True):
     opening = read_json(reports / "opening" / "opening-qa.json")
     voice = read_json(reports / "voice-script-qa.json")
     qa_exists, qa_text = read_text(reports / "qa.txt")
-    decode_exists, decode = read_text(reports / "decode-errors.txt")
-    black_exists, black = read_text(reports / "blackdetect.txt")
+    media = read_json(reports / "video-qa.json")
     frames = opening.get("frames", [])
     checks = {
         "story_validation": bool(story_valid),
         "mp4_generated": video.is_file(),
         "video_qa": qa_exists and not any(line.startswith("FAIL") for line in qa_text.splitlines()),
-        "decode_error_free": decode_exists and not decode.strip(),
-        "black_frame_check": black_exists and "black_start" not in black,
+        "decode_error_free": media.get("decode_error_free", {}).get("passed") is True,
+        "black_frame_check": media.get("black_frame_check", {}).get("passed") is True,
         "headline_layout_qa": opening.get("passed") is True,
-        "opening_frames_extracted": isinstance(frames, list) and len(frames) == 3,
+        "opening_frames_extracted": isinstance(frames, list) and len(frames) == 4,
         "voice_script_qa": voice.get("passed") is True,
         "size_under_25_mib": video.is_file() and video.stat().st_size <= 25 * 1024 * 1024,
     }
     success = all(checks.values())
     used = generated_images_ready(story, video) if story_valid else False
+    details = {key: {"passed": value, "reason": (
+        media.get(key, {}).get("reason", f"{key} evidence missing") if key in {"decode_error_free", "black_frame_check"} else
+        ("all headline layout rules passed" if value else "; ".join(opening.get("reasons", [])) or "headline QA evidence missing")
+    )} for key, value in checks.items() if key in {"decode_error_free", "black_frame_check", "headline_layout_qa"}}
     return {"request_id": story.get("request_id", ""), "success": success,
             "auto_publish_ready": success and used, "video_file": str(video),
             "source_url": story.get("source_url", ""), "article_url": story.get("article_url", ""),
-            "used_generated_images": used, "qa": checks}
+            "used_generated_images": used, "qa": checks, "qa_details": details}
 
 
 def main():

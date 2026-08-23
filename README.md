@@ -36,6 +36,8 @@ Ubuntu runnerはFFmpeg、ffprobe、Noto CJKフォント、Open JTalkをaptから
 
 Actionsにはリポジトリ読み取り権限だけを与えます。Secretsおよび有料APIキーは不要です。第三者URLへアクセスするため、信頼できる公式URLだけを入力してください。
 
+Claude Academyの固定one-shotは、最新の`main`で **Actions → One-shot Claude Academy video → Run workflow** から手動実行できます。既存のpush / pull request起動と公開品質ゲートも引き続き有効です。
+
 ## ニュースURLを受け取った後の手順
 
 ```bash
@@ -127,3 +129,9 @@ Actions の `render_target=daily_story` に、安全な `request_id` と以下�
 画像は1 run最大4枚で、`assets/generated/<request_id>/<content_hash>/daily-editorial-v1/` にキャッシュします。同じrequest ID・canonical payload由来のcontent hash・prompt versionの既存画像は再生成しません。payloadが変われば同じrequest IDでも別directoryとなり、古い画像は利用しません。APIは再試行せず、失敗時もモーショングラフィックスで技術的レンダーを続行しますが `auto_publish_ready` は false です。出力名は canonical payload のSHA-256先頭12桁を含む `<request_id>-<hash>.mp4` なので、同じ内容は同名、変更時は別名になります。
 
 Artifact の `reports/automation-result.json` が呼び出し側の判定の正本です。daily_storyでは前段QAが失敗または証跡不足でも必ず生成し、欠けたcheckをfalseとして記録します。validation、MP4、尺・解像度・音声、decode、黒画面、冒頭レイアウトと3フレーム、voice script、25 MiB以下を `qa` に記録し、すべて成功した `success` に加えてcurrent content hashの4枚が非空で揃い、completeな生成logとrenderer usage manifestが一致して実使用された場合だけ `auto_publish_ready: true` になります。Artifactにはsource payload、変換後story、画像と生成ログ、完成MP4、冒頭/本文frames、全QAも収録します。
+
+## QA診断とActions監視
+
+レンダーは一時MP4へ書き込み、H.264/AAC・yuv420p・faststartで完全デコードできた場合だけ最終名へatomic renameします。`scripts/run_video_qa.py` はdecode/container/timestamp異常と黒区間を説明可能なJSON・テキストへ記録し、黒区間があれば該当PNGも保存します。冒頭は0・1・2秒と、`opening_duration - 1/fps`で求めた冒頭区間内の最終フレーム（3秒・30fpsなら約2.967秒）を `reports/opening/` に保存し、headlineの行数、文字数、フォントサイズ、safe areaを `opening-qa.json` に残します。ActionsはQA stepの失敗後も `if: always()` のdecisionとartifact uploadを実行し、最後に公開品質ゲートを失敗させます。品質判定は緩和しません。
+
+外部のChatGPT/Codex呼び出し側は固定sleep列ではなく `python3 scripts/monitor_github_actions.py <run-id-or-url>` を使用します。15秒間隔、最大600秒（オプションで有限値へ変更可）で確認し、`success`、`failure`、`cancelled`、`timed_out`、`action_required` などの終端conclusionを得た時点で直ちに終了します。failureも待機を続ける状態ではなく、workflow名、URL、failed step、artifact有無を伴う確定結果として返します。

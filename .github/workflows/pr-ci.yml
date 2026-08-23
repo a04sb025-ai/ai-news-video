@@ -36,8 +36,7 @@ jobs:
           python3 scripts/render_reference.py work/ci/story.json "$VIDEO"
           scripts/opening_qa_with_correction.sh "$VIDEO" work/ci/story.json reports/opening
           python3 scripts/check_video.py "$VIDEO" | tee reports/qa.txt
-          ffmpeg -v error -i "$VIDEO" -f null - 2> reports/decode-errors.txt
-          ffmpeg -i "$VIDEO" -vf blackdetect=d=0.3 -an -f null - 2> reports/blackdetect.txt
+          python3 scripts/run_video_qa.py "$VIDEO" reports
           python3 scripts/write_automation_result.py work/ci/story.json "$VIDEO" reports reports/automation-result.json
           python3 - <<'PY'
           import json

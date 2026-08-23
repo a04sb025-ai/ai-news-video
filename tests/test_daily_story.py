@@ -5,10 +5,19 @@ spec = importlib.util.spec_from_file_location("daily", ROOT / "scripts/daily_sto
 daily = importlib.util.module_from_spec(spec); spec.loader.exec_module(daily)
 result_spec = importlib.util.spec_from_file_location("result", ROOT / "scripts/write_automation_result.py")
 result = importlib.util.module_from_spec(result_spec); result_spec.loader.exec_module(result)
+opening_source = (ROOT / "scripts/check_opening_frames.py").read_text()
+opening_prefix = opening_source.split("video, story_path, output_dir =", 1)[0]
+opening_namespace = {}; exec(opening_prefix, opening_namespace)
 voice_spec = importlib.util.spec_from_file_location("voice", ROOT / "scripts/check_story_voice.py")
 voice = importlib.util.module_from_spec(voice_spec); voice_spec.loader.exec_module(voice)
 def valid(): return json.loads((ROOT / "tests/fixtures/daily-story-valid.json").read_text())
 class DailyStoryTest(unittest.TestCase):
+ def test_opening_samples_do_not_cross_three_second_scene_boundary(self):
+  samples=opening_namespace["opening_sample_seconds"](3.0,30)
+  self.assertEqual(samples[:3],[0.0,1.0,2.0]); self.assertLess(samples[-1],3.0)
+  self.assertAlmostEqual(samples[-1],2.9666666667,places=6)
+  # A dark next scene at exactly 3.0s cannot affect opening QA because it is never sampled.
+  self.assertNotIn(3.0,samples)
  def test_valid_payload_and_structure(self):
   story=daily.build_story(daily.validate(valid()))
   self.assertEqual([x["end"] for x in story["script"]],[3,6,9,12,14]); self.assertNotIn("AI", "".join(x["narration"] for x in story["script"][:-1]))
@@ -90,7 +99,7 @@ class DailyStoryTest(unittest.TestCase):
     for name in story["image_assets"]: (image_dir/name).write_bytes(b"png")
     log={"status":"complete","content_hash":story["content_hash"],"expected_images":story["image_assets"],"images":[{"file":n,"result":"generated"} for n in story["image_assets"]]}; (image_dir/"image-generation-log.json").write_text(json.dumps(log))
     absolute=image_dir.resolve(); render={"used_generated_images":True,"content_hash":story["content_hash"],"image_directory":str(absolute),"images":[str(absolute/n) for n in story["image_assets"]]}; video.with_suffix(".render.json").write_text(json.dumps(render))
-    reports=root/"reports"; (reports/"opening").mkdir(parents=True); (reports/"opening/opening-qa.json").write_text(json.dumps({"passed":True,"frames":[{},{},{}]})); (reports/"voice-script-qa.json").write_text(json.dumps({"passed":True})); (reports/"qa.txt").write_text("PASS video\n"); (reports/"decode-errors.txt").write_text(""); (reports/"blackdetect.txt").write_text("no black frames")
+    reports=root/"reports"; (reports/"opening").mkdir(parents=True); (reports/"opening/opening-qa.json").write_text(json.dumps({"passed":True,"frames":[{},{},{},{}]})); (reports/"voice-script-qa.json").write_text(json.dumps({"passed":True})); (reports/"qa.txt").write_text("PASS video\n"); (reports/"video-qa.json").write_text(json.dumps({"decode_error_free":{"passed":True,"reason":"ok"},"black_frame_check":{"passed":True,"reason":"ok"}}))
     decision=result.build_result(story,video,reports)
     self.assertTrue(decision["used_generated_images"]); self.assertTrue(decision["success"]); self.assertTrue(decision["auto_publish_ready"])
    finally: os.chdir(previous)
