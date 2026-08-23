@@ -129,6 +129,11 @@ class FourPageExplainerTest(unittest.TestCase):
         self.assertEqual(story["opening"]["end"], 3.0)
         self.assertGreater(story["script"][0]["end"], story["opening"]["end"])
 
+    def test_check_video_infers_rich_duration_from_render_manifest(self):
+        source = (ROOT / "scripts/check_video.py").read_text()
+        self.assertIn('render_manifest.get("renderer") == "four-page-explainer-v1"', source)
+        self.assertIn('"duration_18_22s"', source)
+
 
 if __name__ == "__main__":
     unittest.main()
