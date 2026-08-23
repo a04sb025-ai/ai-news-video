@@ -66,6 +66,14 @@ def mozo_opening_asset_ready(story, video):
                 and render.get("mozo_opening_asset_sha256") == digest)
 
 
+def four_page_renderer_ready(story, video):
+    if story.get("explanation_contract") != "four-page-v1":
+        return True
+    render = read_json(video.with_suffix(".render.json"))
+    return bool(render.get("renderer") == "four-page-explainer-v1"
+                and render.get("full_narration_subtitles") is True)
+
+
 def build_result(story, video, reports, story_valid=True):
     opening = read_json(reports / "opening" / "opening-qa.json")
     voice = read_json(reports / "voice-script-qa.json")
@@ -85,6 +93,8 @@ def build_result(story, video, reports, story_valid=True):
     }
     if story.get("visual_standard") == "ai-news-visual-v1":
         checks["approved_mozo_opening_asset_used"] = mozo_opening_asset_ready(story, video)
+    if story.get("explanation_contract") == "four-page-v1":
+        checks["four_page_explainer_renderer_used"] = four_page_renderer_ready(story, video)
     success = all(checks.values())
     used = generated_images_ready(story, video) if story_valid else False
     details = {key: {"passed": value, "reason": (
