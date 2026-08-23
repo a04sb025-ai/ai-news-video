@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate display/voice separation and only the pronunciations a story uses."""
+"""Validate display/voice separation, pronunciation normalization, and subtitle completeness."""
 import json
 import sys
 from pathlib import Path
@@ -7,11 +7,13 @@ from pathlib import Path
 INTERNAL_KEYS = ("caption", "narration", "start", "end", "label", "subcaption")
 
 
+def compact(text):
+    return "".join(str(text).split())
+
+
 def build_report(story):
     cues = story["script"]
     narration = "\n".join(cue["narration"] for cue in cues)
-    # New stories preserve pre-normalization narration explicitly. For legacy
-    # stories, captions are also source evidence that a displayed term is used.
     source = "\n".join(cue.get("source_narration", cue["narration"] + "\n" + cue.get("caption", "")) for cue in cues)
     checks = {}
     skipped = []
@@ -23,9 +25,16 @@ def build_report(story):
     checks["captions_do_not_expose_internal_keys"] = not any(
         key in cue.get("caption", "") for cue in cues for key in INTERNAL_KEYS
     )
+    if story.get("explanation_contract") == "four-page-v1":
+        pages = cues[:4]
+        checks["all_four_pages_have_subtitles"] = len(pages) == 4 and all(bool(cue.get("subtitle", "").strip()) for cue in pages)
+        checks["subtitles_cover_full_narration"] = len(pages) == 4 and all(
+            compact(cue.get("subtitle", "")) == compact(cue.get("source_narration", "")) for cue in pages
+        )
+        checks["support_text_present_on_all_pages"] = len(pages) == 4 and all(bool(cue.get("support_text", "").strip()) for cue in pages)
     return {"checks": checks, "skipped_unused_terms": skipped, "tts_text": narration,
             "passed": all(checks.values()),
-            "manual_review": "完成MP4を再生し、読みと各シーンの同期を確認する"}
+            "manual_review": "完成MP4を再生し、読み・字幕全文・各シーンの同期を確認する"}
 
 
 def main():
