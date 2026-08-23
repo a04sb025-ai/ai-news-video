@@ -1,0 +1,139 @@
+name: Weekly AI news visual improvement
+
+"on":
+  workflow_dispatch:
+  schedule:
+    # Monday 08:40 JST, after the normal daily article/video publish window.
+    - cron: "40 23 * * 0"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: weekly-ai-news-visual-improvement
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install render dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk open-jtalk open-jtalk-mecab-naist-jdic hts-voice-nitech-jp-atr503-m001
+
+      - name: Prepare canonical review story
+        run: |
+          mkdir -p work/visual-review reports dist
+          cat > work/visual-review/payload.json <<'JSON'
+          {
+            "request_id": "visual-review-claude-academy",
+            "news_key": "anthropic-claude-academy-visual-review",
+            "source_url": "https://claude.com/blog/anthropics-approach-to-teaching-and-learning-ai",
+            "article_url": "https://aitoolwatch.jp/articles/2026-08-23-claude-academy/",
+            "headline": "Claude Academy、正式公開",
+            "hook": "クロードを公式教材で学べる場が公開されました。",
+            "summary": "入門から開発まで、目的別に学べます。",
+            "points": [
+              "Claude Codeも学べます。",
+              "MCPやサブエージェントも学べます。"
+            ],
+            "narration_terms": {
+              "Claude Code": "クロードコード",
+              "MCP": "エムシーピー"
+            }
+          }
+          JSON
+          python3 scripts/daily_story.py prepare work/visual-review/payload.json work/visual-review
+          echo "VIDEO_FILE=$(cat work/visual-review/video-filename.txt)" >> "$GITHUB_ENV"
+          echo "CONTENT_HASH=$(python3 -c 'import json; print(json.load(open("work/visual-review/story.json"))["content_hash"])')" >> "$GITHUB_ENV"
+
+      - name: Restore canonical illustration cache
+        uses: actions/cache@v4
+        with:
+          path: assets/generated/**
+          key: weekly-visual-review-${{ env.CONTENT_HASH }}-${{ hashFiles('config/image-generation.json', 'scripts/generate_story_images.py') }}
+
+      - name: Render with the same bounded self-heal path used by production
+        id: render
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SELF_HEAL_MAX_REPAIRS: "2"
+        run: |
+          python3 scripts/self_heal_daily_video.py work/visual-review/story.json "dist/$VIDEO_FILE" reports
+
+      - name: Run critical visual review
+        id: visual_review
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VISUAL_REVIEW_MODEL: gpt-5-mini
+        run: |
+          python3 scripts/review_visual_quality.py \
+            work/visual-review/story.json \
+            reports/opening \
+            reports/automation-result.json \
+            reports/visual-review.json
+
+      - name: Upload review evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-visual-improvement-${{ github.run_number }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            dist/*.mp4
+            dist/*.render.json
+            reports/automation-result.json
+            reports/self-heal-summary.json
+            reports/visual-review.json
+            reports/visual-review.md
+            reports/opening/**
+            reports/scenes/**
+            work/visual-review/story.json
+
+      - name: Open or update one improvement issue for this ISO week
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          week="$(TZ=Asia/Tokyo date +%G-W%V)"
+          title="AIニュース動画 改善レビュー: $week"
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+          if [[ -s reports/visual-review.md ]]; then
+            cp reports/visual-review.md /tmp/visual-review-body.md
+          else
+            cat > /tmp/visual-review-body.md <<EOF
+          ## AIニュース動画 継続改善レビュー
+
+          レビュー処理自体が完了しませんでした。日次公開は止めず、次の改善サイクルで診断してください。
+          EOF
+          fi
+
+          {
+            echo
+            echo "### Actions"
+            echo "$run_url"
+            echo
+            echo "このIssueは週1回の改善候補です。日次公開とは独立しており、1改善=1PRで進めます。"
+          } >> /tmp/visual-review-body.md
+
+          issue_number="$(gh issue list --state open --search "\"$title\" in:title" --json number,title --jq '.[] | select(.title == env.TITLE) | .number' TITLE="$title" | head -n1 || true)"
+          if [[ -n "$issue_number" ]]; then
+            gh issue edit "$issue_number" --body-file /tmp/visual-review-body.md
+            echo "Updated improvement issue #$issue_number"
+          else
+            gh issue create --title "$title" --body-file /tmp/visual-review-body.md
+          fi
