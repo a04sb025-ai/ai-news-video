@@ -69,6 +69,8 @@ ffmpeg -i dist/news.mp4 -af loudnorm=print_format=json -f null - 2>&1
 
 正本は `config/short-ja.json` です。1080×1920、9:16、30fps、10〜15秒、日本語、1動画1ニュース、3秒以内のフック、短い字幕、一次情報優先、誇張禁止、推測の明示、最後の「AIツールウォッチ」を定義しています。`config/story.schema.json` はニュース、根拠、脚本、ショットの受け渡し契約です。
 
+`daily_story` の見た目は [AIニュース動画 標準ビジュアル仕様](docs/ai-news-video-visual-spec.md) を正本とし、固定のもぞ、記事に応じて自動選択する仕組み解説／新発表／比較の3テンプレート、0秒から完成している3秒サムネイルを標準適用します。
+
 ## 収録サンプル：10代向けChatGPTニュース
 
 `config/stories/chatgpt-teens-ja.json` に、14秒・5シーンの完成台本とショット表を収録しています。OpenAI画像Providerで生成・キャッシュした4枚のエディトリアルイラストを優先し、利用できない場合は課金なしのモーショングラフィックスへフォールバックします。
