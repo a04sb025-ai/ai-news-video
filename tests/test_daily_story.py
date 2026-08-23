@@ -18,6 +18,23 @@ class DailyStoryTest(unittest.TestCase):
   self.assertAlmostEqual(samples[-1],2.9666666667,places=6)
   # A dark next scene at exactly 3.0s cannot affect opening QA because it is never sampled.
   self.assertNotIn(3.0,samples)
+ def test_opening_zero_and_final_frame_regions_are_regression_targets(self):
+  samples=opening_namespace["opening_sample_seconds"](3.0,30)
+  self.assertEqual(samples[0],0.0); self.assertAlmostEqual(samples[-1],89/30)
+  metrics=opening_namespace["region_metrics"](bytes([80,120,160])*(270*480),270,480,opening_namespace["OPENING_REGIONS"]["visual"])
+  self.assertTrue(metrics["visible"])
+  black=opening_namespace["region_metrics"](bytes(270*480*3),270,480,opening_namespace["OPENING_REGIONS"]["headline"])
+  self.assertFalse(black["visible"])
+ def test_opening_major_elements_have_no_fades(self):
+  source=(ROOT/"scripts/render_reference.py").read_text()
+  opening=source.split("if index == 0:",1)[1].split("elif index == 1:",1)[0]
+  self.assertNotIn(r"\fad",opening)
+  self.assertIn('fade = "" if start == 0',source)
+ def test_headline_comparison_ignores_layout_whitespace_only(self):
+  normalize=opening_namespace["normalize_layout_text"]
+  verified="Claude Academy、正式公開"
+  self.assertEqual(normalize(verified),normalize("Claude\nAcademy、正式公開"))
+  self.assertNotEqual(normalize(verified),normalize("Claude Academy、正式開始"))
  def test_valid_payload_and_structure(self):
   story=daily.build_story(daily.validate(valid()))
   self.assertEqual([x["end"] for x in story["script"]],[3,6,9,12,14]); self.assertNotIn("AI", "".join(x["narration"] for x in story["script"][:-1]))
