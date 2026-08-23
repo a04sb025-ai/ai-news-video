@@ -92,13 +92,16 @@ def normalize_review(raw, metadata):
     if not isinstance(strengths, list):
         strengths = []
     strengths = [str(value).strip() for value in strengths if str(value).strip()][:3]
+    publish_value = raw.get("safe_to_keep_publishing", True)
+    if not isinstance(publish_value, bool):
+        raise ValueError("safe_to_keep_publishing must be boolean")
     average = round(sum(normalized_scores.values()) / len(normalized_scores), 2)
     return {
         **metadata,
         "status": "ok",
         "scores": normalized_scores,
         "average_score": average,
-        "safe_to_keep_publishing": bool(raw.get("safe_to_keep_publishing", True)),
+        "safe_to_keep_publishing": publish_value,
         "priority_improvement": improvement,
         "rationale": rationale,
         "likely_files": files,
@@ -121,9 +124,9 @@ def render_markdown(review):
     publish = "継続してよい" if review.get("safe_to_keep_publishing") else "公開品質を優先して要確認"
     return f"""## AIニュース動画 継続改善レビュー
 
-公開判断: **{publish}**  
-平均スコア: **{review['average_score']}/10**  
-対象: `{review.get('request_id', '')}` / template `{review.get('template', '')}`  
+公開判断: **{publish}**
+平均スコア: **{review['average_score']}/10**
+対象: `{review.get('request_id', '')}` / template `{review.get('template', '')}`
 engine: `{review.get('engine_sha', '')}`
 
 ### スコア
