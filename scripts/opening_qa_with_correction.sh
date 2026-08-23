@@ -13,6 +13,14 @@ if [[ "$status" -eq 0 ]]; then
   exit 0
 fi
 echo "Opening QA failed; rendering one safe correction pass" | tee -a "$REPORT_DIR/../opening-qa.txt"
-OPENING_SAFE_MODE=1 python3 scripts/render_reference.py "$STORY" "$VIDEO"
-# With pipefail enabled, a second QA failure is the command's failure.
+renderer="scripts/render_reference.py"
+if python3 - "$STORY" <<'PY'
+import json, sys
+story=json.load(open(sys.argv[1]))
+raise SystemExit(0 if story.get("explanation_contract") == "four-page-v1" else 1)
+PY
+then
+  renderer="scripts/render_explainer.py"
+fi
+OPENING_SAFE_MODE=1 python3 "$renderer" "$STORY" "$VIDEO"
 python3 scripts/check_opening_frames.py "$VIDEO" "$STORY" "$REPORT_DIR" | tee -a "$REPORT_DIR/../opening-qa.txt"
