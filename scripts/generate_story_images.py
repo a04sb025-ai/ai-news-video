@@ -6,12 +6,14 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = json.loads((ROOT / "config/image-generation.json").read_text())
-COMMON = ("Vertical editorial magazine illustration, human-centered and grounded in a real product or situation. "
-          "One strong subject, bold crop, natural expression, visible paper texture and grain, high mobile contrast, "
-          "deliberate copy space. Consistent palette, light, saturation, protagonist and tactile style across the series. "
-          "No robot: do not draw a white robot, humanoid mascot, glowing brain, glowing orb, generic corporate illustration, "
-          "stock illustration, textbook, infographic, glossy 3D CG, plastic skin, meaningless shield/star/brain icon. "
-          "No words, letters, numbers, logos, watermark, or readable fake UI. Show what changes for a person or product, not AI itself. ")
+COMMON = ("Original vertical editorial scene for the AI Tool Watch series, grounded in the verified product or situation. "
+          "Deep navy and black field, restrained amber, violet and lavender accents, subtle paper grain, soft light, "
+          "sparse abstract circuits, nodes, thin geometry or data-wave motifs; background stays quiet and leaves mobile copy space. "
+          "One clear subject and one message; do not imitate any YouTube Short, creator, publication, website, or branded UI. "
+          "No Matrix rain or repeated binary digits, neon overload, cyberpunk cliché, screenshot, generic corporate illustration, "
+          "stock illustration, infographic, glossy 3D CG, plastic skin, glowing brain/orb. No robot, humanoid mascot, shield/star/brain icon. "
+          "Do not draw Mozo or any substitute mascot; the renderer adds the canonical character. "
+          "No words, letters, numbers, logos, watermark, or readable fake UI. Show the news meaning, not AI as a symbol. ")
 TEEN = {
  "scene-teen-hero.png": "A Japanese teenager discovers a useful new experience; chest-up hero and clear curiosity.",
  "scene-teen-thinking.png": "The same teenager thinks over a notebook while a device offers an abstract unlettered hint.",

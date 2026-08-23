@@ -33,6 +33,22 @@ class DailyStoryTest(unittest.TestCase):
  def test_valid_payload_and_structure(self):
   story=daily.build_story(daily.validate(valid()))
   self.assertEqual([x["end"] for x in story["script"]],[3,6,9,12,14]); self.assertNotIn("AI", "".join(x["narration"] for x in story["script"][:-1]))
+  self.assertEqual(story["visual_standard"], "ai-news-visual-v1"); self.assertEqual(story["opening"]["character"], "mozo")
+ def test_visual_template_selection(self):
+  payload=valid(); payload.update(headline="透かしの仕組み",hook="どういう仕組み？",summary="検出方法を説明します。")
+  self.assertEqual(daily.build_story(payload)["visual_template"]["id"], "A")
+  payload.update(headline="新機能を正式公開",hook="新機能です。",summary="提供を開始しました。")
+  self.assertEqual(daily.build_story(payload)["visual_template"]["id"], "B")
+  payload.update(headline="従来版から変更",hook="違いを比較します。",summary="以前より改善しました。")
+  self.assertEqual(daily.build_story(payload)["visual_template"]["id"], "C")
+ def test_mozo_and_three_cards_are_renderer_contracts(self):
+  source=(ROOT/"scripts/render_reference.py").read_text()
+  self.assertIn('template["key"] == "mechanism"',source); self.assertIn('template["key"] == "comparison"',source)
+  opening=source.split("if index == 0:",1)[1].split("elif index == 1:",1)[0]
+  self.assertIn("canonical Mozo",opening); self.assertNotIn(r"\fad",opening)
+  self.assertIn("MOZO_REFERENCE",source); self.assertIn('"used_mozo_reference"',source)
+  prompt=(ROOT/"scripts/generate_story_images.py").read_text()
+  self.assertIn("do not imitate any YouTube Short",prompt); self.assertIn("No Matrix rain",prompt)
  def test_invalid_json(self):
   with tempfile.TemporaryDirectory() as d:
    src=Path(d)/"bad"; src.write_text("{"); run=subprocess.run([sys.executable,ROOT/"scripts/daily_story.py","prepare",src,Path(d)/"out"]); self.assertNotEqual(run.returncode,0)
@@ -108,9 +124,12 @@ class DailyStoryTest(unittest.TestCase):
    try:
     os.chdir(root); story=daily.build_story(valid()); image_dir=Path(story["image_asset_dir"]); image_dir.mkdir(parents=True)
     video=(root/"video.mp4"); video.write_bytes(b"video")
+    mozo=root/"assets/visual-references/mozo/mozo-character-reference.png"; mozo.parent.mkdir(parents=True)
+    mozo.write_bytes(b"\x89PNG\r\n\x1a\n"+b"reference"*8)
     for name in story["image_assets"]: (image_dir/name).write_bytes(b"png")
     log={"status":"complete","content_hash":story["content_hash"],"expected_images":story["image_assets"],"images":[{"file":n,"result":"generated"} for n in story["image_assets"]]}; (image_dir/"image-generation-log.json").write_text(json.dumps(log))
-    absolute=image_dir.resolve(); render={"used_generated_images":True,"content_hash":story["content_hash"],"image_directory":str(absolute),"images":[str(absolute/n) for n in story["image_assets"]]}; video.with_suffix(".render.json").write_text(json.dumps(render))
+    import hashlib
+    absolute=image_dir.resolve(); render={"used_generated_images":True,"content_hash":story["content_hash"],"image_directory":str(absolute),"images":[str(absolute/n) for n in story["image_assets"]],"used_mozo_reference":True,"mozo_reference":str(mozo),"mozo_reference_sha256":hashlib.sha256(mozo.read_bytes()).hexdigest()}; video.with_suffix(".render.json").write_text(json.dumps(render))
     reports=root/"reports"; (reports/"opening").mkdir(parents=True); (reports/"opening/opening-qa.json").write_text(json.dumps({"passed":True,"frames":[{},{},{},{}]})); (reports/"voice-script-qa.json").write_text(json.dumps({"passed":True})); (reports/"qa.txt").write_text("PASS video\n"); (reports/"video-qa.json").write_text(json.dumps({"decode_error_free":{"passed":True,"reason":"ok"},"black_frame_check":{"passed":True,"reason":"ok"}}))
     decision=result.build_result(story,video,reports)
     self.assertTrue(decision["used_generated_images"]); self.assertTrue(decision["success"]); self.assertTrue(decision["auto_publish_ready"])

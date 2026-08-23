@@ -11,6 +11,30 @@ from urllib.parse import urlparse
 MAX_TEXT = {"headline": 80, "hook": 120, "summary": 240, "point": 160}
 REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 SPOKEN_CHARACTER_BUDGET = 24
+VISUAL_STANDARD = "ai-news-visual-v1"
+MOZO_REFERENCE = "assets/visual-references/mozo/mozo-character-reference.png"
+TEMPLATES = {
+    "mechanism": {"name": "A", "kind": "仕組み解説", "bubble": "ここがポイント"},
+    "announcement": {"name": "B", "kind": "新機能・新発表", "bubble": "何が変わる？"},
+    "comparison": {"name": "C", "kind": "比較・変更", "bubble": "ここが違う"},
+}
+
+
+def select_template(payload):
+    """Select one explainable visual grammar without inventing article facts."""
+    text = " ".join(str(payload.get(key, "")) for key in ("headline", "hook", "summary"))
+    text += " " + " ".join(payload.get("points", []))
+    comparison = ("比較", "違い", "変更", "従来", "以前より", "改善", "刷新", "アップデート", "Before", "After")
+    mechanism = ("仕組み", "なぜ", "どういう", "方法", "流れ", "透かし", "検出", "生成", "動作")
+    announcement = ("公開", "発表", "新機能", "提供", "開始", "リリース", "登場", "正式")
+    # Explicit comparisons win, then explanatory stories, then announcements.
+    if any(word in text for word in comparison):
+        return "comparison"
+    if any(word in text for word in mechanism):
+        return "mechanism"
+    if any(word in text for word in announcement):
+        return "announcement"
+    return "mechanism"
 
 
 def validate(payload):
@@ -127,9 +151,17 @@ def build_story(payload):
     script.append({"start": 12.0, "end": 14.0, "label": "AIニュース速報",
                    "caption": "AIツールウォッチ", "narration": "エーアイツールウォッチ。"})
     digest = content_hash(payload)
+    template_key = select_template(payload)
+    template = TEMPLATES[template_key]
     return {
         "request_id": payload["request_id"], "content_hash": digest, "source_url": payload["source_url"],
         "article_url": payload["article_url"], "status": "ready", "voice_pronunciations": terms,
+        "visual_standard": VISUAL_STANDARD,
+        "visual_template": {"id": template["name"], "key": template_key,
+                            "kind": template["kind"], "bubble": template["bubble"]},
+        "opening": {"start": 0.0, "end": 3.0, "major_elements_static": True,
+                    "character": "mozo", "character_reference": MOZO_REFERENCE,
+                    "headline_source": "verified_headline"},
         "claims": [{"text": value, "source_url": payload["source_url"]}
                    for value in [payload["headline"], payload["hook"], payload["summary"], *points]],
         "script": script,

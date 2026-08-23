@@ -45,6 +45,24 @@ def generated_images_ready(story, video):
     return bool(correct_dir and files_ok and log_ok and rendered)
 
 
+def mozo_reference_ready(story, video):
+    """Require evidence that the renderer used the exact official PNG bytes."""
+    expected = story.get("opening", {}).get("character_reference")
+    if expected != "assets/visual-references/mozo/mozo-character-reference.png":
+        return False
+    path = canonical_path(expected)
+    try:
+        import hashlib
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        png_ok = path.stat().st_size > 64 and path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    except OSError:
+        return False
+    render = read_json(video.with_suffix(".render.json"))
+    return bool(png_ok and render.get("used_mozo_reference") is True
+                and canonical_path(render.get("mozo_reference", "")) == path
+                and render.get("mozo_reference_sha256") == digest)
+
+
 def build_result(story, video, reports, story_valid=True):
     opening = read_json(reports / "opening" / "opening-qa.json")
     voice = read_json(reports / "voice-script-qa.json")
@@ -62,6 +80,8 @@ def build_result(story, video, reports, story_valid=True):
         "voice_script_qa": voice.get("passed") is True,
         "size_under_25_mib": video.is_file() and video.stat().st_size <= 25 * 1024 * 1024,
     }
+    if story.get("visual_standard") == "ai-news-visual-v1":
+        checks["official_mozo_reference_used"] = mozo_reference_ready(story, video)
     success = all(checks.values())
     used = generated_images_ready(story, video) if story_valid else False
     details = {key: {"passed": value, "reason": (
