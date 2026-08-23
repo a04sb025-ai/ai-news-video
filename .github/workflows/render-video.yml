@@ -64,7 +64,21 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           mkdir -p reports
-          if [[ "${{ inputs.render_target }}" == daily_story ]]; then python3 scripts/generate_story_images.py work/daily/story.json; else make generate-teen-images; fi 2>&1 | tee reports/image-generation.txt
+          if [[ "${{ inputs.render_target }}" == daily_story ]]; then
+            status=1
+            for attempt in 1 2; do
+              echo "Illustration generation attempt ${attempt}/2"
+              set +e
+              python3 scripts/generate_story_images.py work/daily/story.json 2>&1 | tee -a reports/image-generation.txt
+              status=${PIPESTATUS[0]}
+              set -e
+              [[ "$status" -eq 0 ]] && break
+              [[ "$attempt" -lt 2 ]] && sleep 10
+            done
+            exit "$status"
+          else
+            make generate-teen-images 2>&1 | tee reports/image-generation.txt
+          fi
       - name: Prepare and render generic URL
         if: inputs.render_target == 'generic_url'
         env: {NEWS_URL: "${{ inputs.news_url }}", HEADLINE: "${{ inputs.headline }}"}
@@ -89,7 +103,6 @@ jobs:
         run: |
           set +e
           if [[ "${{ inputs.render_target }}" == daily_story ]]; then VIDEO="dist/$VIDEO_FILE"; STORY=work/daily/story.json; else VIDEO=dist/chatgpt-teens-ja.mp4; STORY=config/stories/chatgpt-teens-ja.json; fi
-          # Wrapper invokes scripts/check_opening_frames.py, then one OPENING_SAFE_MODE correction on failure.
           scripts/opening_qa_with_correction.sh "$VIDEO" "$STORY" reports/opening
           status=$?
           python3 scripts/extract_review_frames.py "$VIDEO" reports/scenes
@@ -106,9 +119,17 @@ jobs:
           ffmpeg -i "$VIDEO" -vf freezedetect=n=-50dB:d=1 -an -f null - 2> reports/freezedetect.txt
           ffmpeg -i "$VIDEO" -af loudnorm=print_format=json -f null - 2> reports/loudness.txt
           exit $status
-      - name: Write daily automation decision
+      - name: Write initial daily automation decision
         if: ${{ always() && inputs.render_target == 'daily_story' }}
+        continue-on-error: true
         run: python3 scripts/write_automation_result.py work/daily/story.json "dist/$VIDEO_FILE" reports reports/automation-result.json
+      - name: Self-heal recoverable daily video failures
+        if: ${{ always() && inputs.render_target == 'daily_story' }}
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SELF_HEAL_MAX_REPAIRS: "2"
+        run: python3 scripts/self_heal_daily_video.py work/daily/story.json "dist/$VIDEO_FILE" reports
       - name: Upload video and QA evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -125,3 +146,21 @@ jobs:
             config/stories/chatgpt-teens-ja.json
             config/image-generation.json
             assets/generated/**
+      - name: Require publishable daily result after repair
+        if: ${{ always() && inputs.render_target == 'daily_story' }}
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path('reports/automation-result.json')
+          if not path.is_file():
+              raise SystemExit('Daily automation result is missing after self-heal')
+          result=json.loads(path.read_text())
+          print(json.dumps(result, ensure_ascii=False, indent=2))
+          if result.get('auto_publish_ready') is not True:
+              summary=Path('reports/self-heal-summary.json')
+              if summary.is_file():
+                  print(summary.read_text())
+              raise SystemExit('Video remains non-publishable after bounded self-healing')
+          print('AUTO PUBLISH READY: true')
+          PY
