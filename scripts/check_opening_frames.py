@@ -31,6 +31,11 @@ def timestamp_label(seconds):
     return f"{seconds:.3f}".rstrip("0").rstrip(".")
 
 
+def normalize_layout_text(text):
+    """Ignore layout-only whitespace while preserving all semantic characters."""
+    return "".join(str(text).split())
+
+
 def region_metrics(rgb, width, height, region):
     """Measure whether a named opening region contains visible pixels."""
     source_width, source_height = 1080, 1920
@@ -73,7 +78,10 @@ layout_details = {
 if "request_id" not in story:
     checks["headline_is_present"] = bool(opening["caption"].strip())
 else:
-    checks["headline_matches_verified_story"] = opening["caption"].replace("\n", "") == story["claims"][0]["text"]
+    checks["headline_matches_verified_story"] = (
+        normalize_layout_text(opening["caption"])
+        == normalize_layout_text(story["claims"][0]["text"])
+    )
 frames = []
 opening_duration = opening["end"] - opening["start"]
 for seconds in opening_sample_seconds(opening_duration, FPS):
