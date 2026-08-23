@@ -7,7 +7,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 FPS = 30
 QA_FRAME_SIZE = (270, 480)
 OPENING_REGIONS = {
@@ -65,8 +64,10 @@ video, story_path, output_dir = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.a
 output_dir.mkdir(parents=True, exist_ok=True)
 story = json.loads(story_path.read_text())
 opening = story["script"][0]
+opening_contract = story.get("opening", {"start": opening["start"], "end": min(opening["end"], 3.0)})
 checks = {
-    "opening_is_exactly_3s": opening["start"] == 0 and opening["end"] == 3,
+    "opening_is_exactly_3s": opening_contract.get("start") == 0 and opening_contract.get("end") == 3,
+    "opening_cue_covers_full_3s": opening["start"] == 0 and opening["end"] >= 3,
     "headline_max_2_lines": len(opening["caption"].splitlines()) <= 2,
     "headline_is_concise": all(len(line) <= 18 for line in opening["caption"].splitlines()),
 }
@@ -97,10 +98,11 @@ if "content_hash" in story:
 layout_details = {
     "line_count": len(opening["caption"].splitlines()), "maximum_lines": 2,
     "maximum_characters_per_line": max(map(len, opening["caption"].splitlines()), default=0),
-    "required_maximum_characters_per_line": 18, "font_size_px": 112,
+    "required_maximum_characters_per_line": 18,
+    "font_size_px": 106 if story.get("explanation_contract") == "four-page-v1" else 112,
     "required_minimum_font_size_px": 56,
     "safe_area_px": {"left": 90, "right": 90, "top": 160, "bottom": 260},
-    "headline_box_px": {"left": 112, "top": 255, "right": 990, "bottom": 565},
+    "headline_box_px": {"left": 112, "top": 225, "right": 990, "bottom": 565},
 }
 if "request_id" not in story:
     checks["headline_is_present"] = bool(opening["caption"].strip())
@@ -110,7 +112,7 @@ else:
         == normalize_layout_text(story["claims"][0]["text"])
     )
 frames = []
-opening_duration = opening["end"] - opening["start"]
+opening_duration = opening_contract["end"] - opening_contract["start"]
 for seconds in opening_sample_seconds(opening_duration, FPS):
     label = timestamp_label(seconds)
     stem = f"opening-{label}s"
@@ -119,7 +121,6 @@ for seconds in opening_sample_seconds(opening_duration, FPS):
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", str(seconds), "-i", str(video),
         "-frames:v", "1", str(png),
     ], check=True)
-    # A tiny RGB sample makes contrast/empty-frame checks dependency-free.
     ppm = subprocess.check_output([
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", str(seconds), "-i", str(video),
         "-frames:v", "1", "-vf", f"scale={QA_FRAME_SIZE[0]}:{QA_FRAME_SIZE[1]}",

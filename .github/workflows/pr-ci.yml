@@ -45,3 +45,34 @@ jobs:
           assert result['auto_publish_ready'] is False
           assert result['used_generated_images'] is False
           PY
+      - name: Fallback-render four-page explainer and verify full subtitles
+        env:
+          OPENAI_API_KEY: ''
+        run: |
+          mkdir -p work/ci-rich dist/ci-rich reports/ci-rich
+          python3 scripts/daily_story.py prepare tests/fixtures/daily-story-four-page-valid.json work/ci-rich
+          set +e
+          python3 scripts/generate_story_images.py work/ci-rich/story.json | tee reports/ci-rich/image-generation.txt
+          image_status=${PIPESTATUS[0]}
+          set -e
+          test "$image_status" -eq 2
+          VIDEO="dist/ci-rich/$(cat work/ci-rich/video-filename.txt)"
+          python3 scripts/check_story_voice.py work/ci-rich/story.json reports/ci-rich/voice-script-qa.json | tee reports/ci-rich/voice-script-qa.txt
+          python3 scripts/render_explainer.py work/ci-rich/story.json "$VIDEO"
+          scripts/opening_qa_with_correction.sh "$VIDEO" work/ci-rich/story.json reports/ci-rich/opening
+          python3 scripts/check_video.py "$VIDEO" work/ci-rich/story.json | tee reports/ci-rich/qa.txt
+          python3 scripts/run_video_qa.py "$VIDEO" reports/ci-rich
+          python3 scripts/write_automation_result.py work/ci-rich/story.json "$VIDEO" reports/ci-rich reports/ci-rich/automation-result.json
+          python3 - <<'PY'
+          import json
+          story=json.load(open('work/ci-rich/story.json'))
+          result=json.load(open('reports/ci-rich/automation-result.json'))
+          voice=json.load(open('reports/ci-rich/voice-script-qa.json'))
+          manifest=json.load(open('dist/ci-rich/' + open('work/ci-rich/video-filename.txt').read().strip().replace('.mp4','.render.json')))
+          assert story['explanation_contract'] == 'four-page-v1'
+          assert voice['checks']['subtitles_cover_full_narration'] is True
+          assert manifest['full_narration_subtitles'] is True
+          assert result['success'] is True
+          assert result['auto_publish_ready'] is False
+          assert result['used_generated_images'] is False
+          PY

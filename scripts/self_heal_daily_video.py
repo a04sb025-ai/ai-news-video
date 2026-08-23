@@ -88,8 +88,8 @@ def perform_qa(story: Path, video: Path, reports: Path) -> dict:
         log=reports / "voice-script-qa.txt")
     run([sys.executable, "scripts/check_opening_frames.py", str(video), str(story), str(opening)],
         log=reports / "opening-qa.txt")
-    run([sys.executable, "scripts/extract_review_frames.py", str(video), str(scenes)])
-    run([sys.executable, "scripts/check_video.py", str(video)], log=reports / "qa.txt")
+    run([sys.executable, "scripts/extract_review_frames.py", str(video), str(scenes), str(story)])
+    run([sys.executable, "scripts/check_video.py", str(video), str(story)], log=reports / "qa.txt")
     run([sys.executable, "scripts/run_video_qa.py", str(video), str(reports)])
     run([
         sys.executable, "scripts/write_automation_result.py", str(story), str(video),
@@ -107,6 +107,11 @@ def is_semantic_stop(result: dict) -> bool:
     return "headline_matches_verified_story" in reason
 
 
+def renderer_for(story: Path) -> str:
+    contract = read_json(story).get("explanation_contract")
+    return "scripts/render_explainer.py" if contract == "four-page-v1" else "scripts/render_reference.py"
+
+
 def main() -> int:
     if len(sys.argv) != 4:
         raise SystemExit("usage: self_heal_daily_video.py STORY_JSON VIDEO_MP4 REPORTS_DIR")
@@ -115,6 +120,7 @@ def main() -> int:
     reports.mkdir(parents=True, exist_ok=True)
     result = read_json(result_path)
     attempts: list[dict] = []
+    renderer = renderer_for(story)
 
     if result.get("auto_publish_ready") is True:
         summary = {"status": "ready", "repairs": 0, "attempts": [], "final": result}
@@ -133,10 +139,11 @@ def main() -> int:
 
         video.unlink(missing_ok=True)
         video.with_suffix(".render.json").unlink(missing_ok=True)
-        render_status = run([sys.executable, "scripts/render_reference.py", str(story), str(video)], env=env,
+        render_status = run([sys.executable, renderer, str(story), str(video)], env=env,
                             log=reports / f"self-heal-render-{repair}.txt")
         if render_status != 0 or not video.is_file():
-            attempts.append({"repair": repair, "action": "rerender", "rendered": False, "regenerated_images": regenerated})
+            attempts.append({"repair": repair, "action": "rerender", "renderer": renderer,
+                             "rendered": False, "regenerated_images": regenerated})
             continue
 
         compressed = optimize_if_needed(video)
@@ -145,6 +152,7 @@ def main() -> int:
         attempts.append({
             "repair": repair,
             "action": "safe-rerender",
+            "renderer": renderer,
             "rendered": True,
             "regenerated_images": regenerated,
             "compressed": compressed,
@@ -163,7 +171,7 @@ def main() -> int:
         "repairs": len(attempts),
         "attempts": attempts,
         "final": final,
-        "policy": "Never bypass story, voice, headline-truth, or media QA gates.",
+        "policy": "Never bypass story, voice, headline-truth, subtitle-completeness, or media QA gates.",
     }
     (reports / "self-heal-summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps(summary, ensure_ascii=False))

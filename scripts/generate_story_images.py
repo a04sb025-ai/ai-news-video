@@ -6,12 +6,15 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = json.loads((ROOT / "config/image-generation.json").read_text())
-COMMON = ("Original vertical editorial scene for the AI Tool Watch series, grounded in the verified product or situation. "
+COMMON = ("Original vertical editorial scene for the AI Tool Watch series, grounded only in the verified news content. "
           "Deep navy and black field, restrained amber, violet and lavender accents, subtle paper grain, soft light, "
-          "sparse abstract circuits, nodes, thin geometry or data-wave motifs; background stays quiet and leaves mobile copy space. "
-          "One clear subject and one message; do not imitate any YouTube Short, creator, publication, website, or branded UI. "
-          "No Matrix rain or repeated binary digits, neon overload, cyberpunk cliché, screenshot, generic corporate illustration, "
-          "stock illustration, infographic, glossy 3D CG, plastic skin, glowing brain/orb. No robot, humanoid mascot, shield/star/brain icon. "
+          "sparse circuits or thin geometry only as quiet background texture; leave mobile copy space. "
+          "The scene must explain one concrete relationship using recognizable actors or objects named in the verified content. "
+          "Do not use meaningless empty boxes, generic arrows, anonymous process diagrams, or vague technology symbolism as the main idea. "
+          "If the story is about a dispute, impact, mechanism, or decision, show the actual subject and object relationship visually. "
+          "Original composition; do not imitate any YouTube Short, creator, publication, website, or branded UI. "
+          "No Matrix rain, repeated binary digits, neon overload, cyberpunk cliché, screenshot, generic corporate illustration, "
+          "stock illustration, glossy 3D CG, plastic skin, glowing brain/orb. No robot, humanoid mascot, shield/star/brain icon. "
           "Do not draw Mozo or any substitute mascot; the renderer adds the canonical character. "
           "No words, letters, numbers, logos, watermark, or readable fake UI. Show the news meaning, not AI as a symbol. ")
 TEEN = {
@@ -24,10 +27,15 @@ TEEN = {
 def story_prompts(path):
     story = json.loads(path.read_text())
     scenes = story["image_scenes"]
-    prompts = {
-        name: COMMON + f" Scene role: {scene['role']}. Depict only this verified scene context: {scene['verified_content']}"
-        for name, scene in zip(story["image_assets"], scenes)
-    }
+    prompts = {}
+    for name, scene in zip(story["image_assets"], scenes):
+        intent = scene.get("visual_intent", "")
+        visuals = ", ".join(scene.get("key_visuals", []))
+        prompts[name] = (COMMON
+                         + f" Scene role: {scene['role']}."
+                         + (f" Visual intent: {intent}." if intent else "")
+                         + (f" Required concrete visual elements: {visuals}." if visuals else "")
+                         + f" Depict only this verified context: {scene['verified_content']}")
     return ROOT / story["image_asset_dir"], prompts
 
 def generate(destination, prompt, api_key):
