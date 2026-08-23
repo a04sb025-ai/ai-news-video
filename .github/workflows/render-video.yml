@@ -92,7 +92,13 @@ jobs:
           mkdir -p dist reports
           if [[ "${{ inputs.render_target }}" == daily_story ]]; then
             python3 scripts/check_story_voice.py work/daily/story.json reports/voice-script-qa.json | tee reports/voice-script-qa.txt
-            python3 scripts/render_reference.py work/daily/story.json "dist/$VIDEO_FILE"
+            renderer="$(python3 - <<'PY'
+          import json
+          story=json.load(open('work/daily/story.json'))
+          print('scripts/render_explainer.py' if story.get('explanation_contract') == 'four-page-v1' else 'scripts/render_reference.py')
+          PY
+          )"
+            python3 "$renderer" work/daily/story.json "dist/$VIDEO_FILE"
           else
             python3 scripts/check_story_voice.py config/stories/chatgpt-teens-ja.json reports/voice-script-qa.json | tee reports/voice-script-qa.txt
             make render-teen-news
@@ -105,7 +111,7 @@ jobs:
           if [[ "${{ inputs.render_target }}" == daily_story ]]; then VIDEO="dist/$VIDEO_FILE"; STORY=work/daily/story.json; else VIDEO=dist/chatgpt-teens-ja.mp4; STORY=config/stories/chatgpt-teens-ja.json; fi
           scripts/opening_qa_with_correction.sh "$VIDEO" "$STORY" reports/opening
           status=$?
-          python3 scripts/extract_review_frames.py "$VIDEO" reports/scenes
+          python3 scripts/extract_review_frames.py "$VIDEO" reports/scenes "$STORY"
           exit $status
       - name: Automated video QA
         continue-on-error: true
