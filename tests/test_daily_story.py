@@ -90,7 +90,7 @@ class DailyStoryTest(unittest.TestCase):
     for name in story["image_assets"]: (image_dir/name).write_bytes(b"png")
     log={"status":"complete","content_hash":story["content_hash"],"expected_images":story["image_assets"],"images":[{"file":n,"result":"generated"} for n in story["image_assets"]]}; (image_dir/"image-generation-log.json").write_text(json.dumps(log))
     absolute=image_dir.resolve(); render={"used_generated_images":True,"content_hash":story["content_hash"],"image_directory":str(absolute),"images":[str(absolute/n) for n in story["image_assets"]]}; video.with_suffix(".render.json").write_text(json.dumps(render))
-    reports=root/"reports"; (reports/"opening").mkdir(parents=True); (reports/"opening/opening-qa.json").write_text(json.dumps({"passed":True,"frames":[{},{},{}]})); (reports/"voice-script-qa.json").write_text(json.dumps({"passed":True})); (reports/"qa.txt").write_text("PASS video\n"); (reports/"decode-errors.txt").write_text(""); (reports/"blackdetect.txt").write_text("no black frames")
+    reports=root/"reports"; (reports/"opening").mkdir(parents=True); (reports/"opening/opening-qa.json").write_text(json.dumps({"passed":True,"frames":[{},{},{},{}]})); (reports/"voice-script-qa.json").write_text(json.dumps({"passed":True})); (reports/"qa.txt").write_text("PASS video\n"); (reports/"video-qa.json").write_text(json.dumps({"decode_error_free":{"passed":True,"reason":"ok"},"black_frame_check":{"passed":True,"reason":"ok"}}))
     decision=result.build_result(story,video,reports)
     self.assertTrue(decision["used_generated_images"]); self.assertTrue(decision["success"]); self.assertTrue(decision["auto_publish_ready"])
    finally: os.chdir(previous)

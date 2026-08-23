@@ -15,13 +15,21 @@ checks = {
     "headline_max_2_lines": len(opening["caption"].splitlines()) <= 2,
     "headline_is_concise": all(len(line) <= 18 for line in opening["caption"].splitlines()),
 }
+layout_details = {
+    "line_count": len(opening["caption"].splitlines()), "maximum_lines": 2,
+    "maximum_characters_per_line": max(map(len, opening["caption"].splitlines()), default=0),
+    "required_maximum_characters_per_line": 18, "font_size_px": 112,
+    "required_minimum_font_size_px": 56,
+    "safe_area_px": {"left": 90, "right": 90, "top": 160, "bottom": 260},
+    "headline_box_px": {"left": 112, "top": 255, "right": 990, "bottom": 565},
+}
 if "request_id" not in story:
     checks["headline_is_present"] = bool(opening["caption"].strip())
 else:
     checks["headline_matches_verified_story"] = opening["caption"].replace("\n", "") == story["claims"][0]["text"]
 frames = []
-for seconds in (0.5, 1.5, 2.5):
-    stem = f"opening-{seconds:.1f}s"
+for seconds in (0.0, 1.0, 2.0, 3.0):
+    stem = f"opening-{seconds:g}s"
     png = output_dir / f"{stem}.png"
     subprocess.run([
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", str(seconds), "-i", str(video),
@@ -52,6 +60,8 @@ report = {
     "headline": opening["caption"],
     "frames": frames,
     "checks": checks,
+    "layout_details": layout_details,
+    "reasons": [name for name, passed in checks.items() if not passed],
     "manual_review": [
         "見出しがスマホで読める", "ニュース内容を推測できる", "主役画像が十分大きい",
         "不要な空白が多すぎない", "字幕やUIが主役を邪魔しない", "スクロール中に目を引く",
@@ -61,5 +71,9 @@ report = {
 (output_dir / "opening-qa.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
 for name, passed in checks.items():
     print(f"{'PASS' if passed else 'FAIL'} {name}")
+print("QA: headline_layout_qa")
+print(f"RESULT: {'PASS' if report['passed'] else 'FAIL'}")
+print("REASON: " + ("all headline layout rules passed" if report["passed"] else "; ".join(report["reasons"])))
+print("DETAIL: " + json.dumps(layout_details, ensure_ascii=False))
 print("MANUAL REVIEW REQUIRED: " + " / ".join(report["manual_review"]))
 raise SystemExit(0 if report["passed"] else 1)

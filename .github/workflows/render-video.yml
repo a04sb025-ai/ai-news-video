@@ -85,19 +85,27 @@ jobs:
           fi
       - name: Opening and scene QA
         if: inputs.render_target != 'generic_url'
+        continue-on-error: true
         run: |
+          set +e
           if [[ "${{ inputs.render_target }}" == daily_story ]]; then VIDEO="dist/$VIDEO_FILE"; STORY=work/daily/story.json; else VIDEO=dist/chatgpt-teens-ja.mp4; STORY=config/stories/chatgpt-teens-ja.json; fi
           # Wrapper invokes scripts/check_opening_frames.py, then one OPENING_SAFE_MODE correction on failure.
           scripts/opening_qa_with_correction.sh "$VIDEO" "$STORY" reports/opening
+          status=$?
           python3 scripts/extract_review_frames.py "$VIDEO" reports/scenes
+          exit $status
       - name: Automated video QA
+        continue-on-error: true
         run: |
+          set +e
           if [[ "${{ inputs.render_target }}" == daily_story ]]; then VIDEO="dist/$VIDEO_FILE"; elif [[ "${{ inputs.render_target }}" == teen_chatgpt ]]; then VIDEO=dist/chatgpt-teens-ja.mp4; else VIDEO=dist/ai-news.mp4; fi
           python3 scripts/check_video.py "$VIDEO" | tee reports/qa.txt
-          ffmpeg -v error -i "$VIDEO" -f null - 2> reports/decode-errors.txt
-          ffmpeg -i "$VIDEO" -vf blackdetect=d=0.3 -an -f null - 2> reports/blackdetect.txt
+          status=${PIPESTATUS[0]}
+          python3 scripts/run_video_qa.py "$VIDEO" reports
+          (( status |= $? ))
           ffmpeg -i "$VIDEO" -vf freezedetect=n=-50dB:d=1 -an -f null - 2> reports/freezedetect.txt
           ffmpeg -i "$VIDEO" -af loudnorm=print_format=json -f null - 2> reports/loudness.txt
+          exit $status
       - name: Write daily automation decision
         if: ${{ always() && inputs.render_target == 'daily_story' }}
         run: python3 scripts/write_automation_result.py work/daily/story.json "dist/$VIDEO_FILE" reports reports/automation-result.json

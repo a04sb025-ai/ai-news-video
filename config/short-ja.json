@@ -59,9 +59,10 @@
   "qa": {
     "extract_opening_frames": true,
     "opening_frame_sample_seconds": [
-      0.5,
-      1.5,
-      2.5
+      0.0,
+      1.0,
+      2.0,
+      3.0
     ],
     "opening_review_required": [
       "phone_readability",
