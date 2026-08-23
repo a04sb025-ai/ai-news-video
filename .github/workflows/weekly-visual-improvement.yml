@@ -110,12 +110,13 @@ jobs:
           set -euo pipefail
           week="$(TZ=Asia/Tokyo date +%G-W%V)"
           title="AIニュース動画 改善レビュー: $week"
+          export TITLE="$title"
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
           if [[ -s reports/visual-review.md ]]; then
             cp reports/visual-review.md /tmp/visual-review-body.md
           else
-            cat > /tmp/visual-review-body.md <<EOF
+            cat > /tmp/visual-review-body.md <<'EOF'
           ## AIニュース動画 継続改善レビュー
 
           レビュー処理自体が完了しませんでした。日次公開は止めず、次の改善サイクルで診断してください。
@@ -130,7 +131,14 @@ jobs:
             echo "このIssueは週1回の改善候補です。日次公開とは独立しており、1改善=1PRで進めます。"
           } >> /tmp/visual-review-body.md
 
-          issue_number="$(gh issue list --state open --search "\"$title\" in:title" --json number,title --jq '.[] | select(.title == env.TITLE) | .number' TITLE="$title" | head -n1 || true)"
+          gh issue list --state open --search "\"$title\" in:title" --json number,title > /tmp/visual-review-issues.json
+          issue_number="$(python3 - <<'PY'
+          import json, os
+          items = json.load(open('/tmp/visual-review-issues.json'))
+          title = os.environ['TITLE']
+          print(next((str(item['number']) for item in items if item.get('title') == title), ''))
+          PY
+          )"
           if [[ -n "$issue_number" ]]; then
             gh issue edit "$issue_number" --body-file /tmp/visual-review-body.md
             echo "Updated improvement issue #$issue_number"
