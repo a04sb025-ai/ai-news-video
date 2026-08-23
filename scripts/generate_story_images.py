@@ -12,7 +12,7 @@ COMMON = ("Original vertical editorial scene for the AI Tool Watch series, groun
           "The scene must explain one concrete relationship using recognizable actors or objects named in the verified content. "
           "Do not use meaningless empty boxes, generic arrows, anonymous process diagrams, or vague technology symbolism as the main idea. "
           "If the story is about a dispute, impact, mechanism, or decision, show the actual subject and object relationship visually. "
-          "Do not imitate any YouTube Short, creator, publication, website, or branded UI. "
+          "Original composition; do not imitate any YouTube Short, creator, publication, website, or branded UI. "
           "No Matrix rain, repeated binary digits, neon overload, cyberpunk cliché, screenshot, generic corporate illustration, "
           "stock illustration, glossy 3D CG, plastic skin, glowing brain/orb. No robot, humanoid mascot, shield/star/brain icon. "
           "Do not draw Mozo or any substitute mascot; the renderer adds the canonical character. "
