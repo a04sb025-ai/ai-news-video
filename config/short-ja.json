@@ -58,12 +58,11 @@
   },
   "qa": {
     "extract_opening_frames": true,
-    "opening_frame_sample_seconds": [
-      0.0,
-      1.0,
-      2.0,
-      3.0
-    ],
+    "opening_frame_sampling": {
+      "whole_seconds": [0.0, 1.0, 2.0],
+      "include_last_frame": true,
+      "fps": 30
+    },
     "opening_review_required": [
       "phone_readability",
       "topic_clarity",

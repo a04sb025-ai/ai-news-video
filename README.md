@@ -130,6 +130,6 @@ Artifact の `reports/automation-result.json` が呼び出し側の判定の正�
 
 ## QA診断とActions監視
 
-レンダーは一時MP4へ書き込み、H.264/AAC・yuv420p・faststartで完全デコードできた場合だけ最終名へatomic renameします。`scripts/run_video_qa.py` はdecode/container/timestamp異常と黒区間を説明可能なJSON・テキストへ記録し、黒区間があれば該当PNGも保存します。冒頭は0・1・2・3秒を `reports/opening/` に保存し、headlineの行数、文字数、フォントサイズ、safe areaを `opening-qa.json` に残します。ActionsはQA stepの失敗後も `if: always()` のdecisionとartifact uploadを実行し、最後に公開品質ゲートを失敗させます。品質判定は緩和しません。
+レンダーは一時MP4へ書き込み、H.264/AAC・yuv420p・faststartで完全デコードできた場合だけ最終名へatomic renameします。`scripts/run_video_qa.py` はdecode/container/timestamp異常と黒区間を説明可能なJSON・テキストへ記録し、黒区間があれば該当PNGも保存します。冒頭は0・1・2秒と、`opening_duration - 1/fps`で求めた冒頭区間内の最終フレーム（3秒・30fpsなら約2.967秒）を `reports/opening/` に保存し、headlineの行数、文字数、フォントサイズ、safe areaを `opening-qa.json` に残します。ActionsはQA stepの失敗後も `if: always()` のdecisionとartifact uploadを実行し、最後に公開品質ゲートを失敗させます。品質判定は緩和しません。
 
 外部のChatGPT/Codex呼び出し側は固定sleep列ではなく `python3 scripts/monitor_github_actions.py <run-id-or-url>` を使用します。15秒間隔、最大600秒（オプションで有限値へ変更可）で確認し、`success`、`failure`、`cancelled`、`timed_out`、`action_required` などの終端conclusionを得た時点で直ちに終了します。failureも待機を続ける状態ではなく、workflow名、URL、failed step、artifact有無を伴う確定結果として返します。

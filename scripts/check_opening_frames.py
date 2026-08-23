@@ -6,6 +6,25 @@ import subprocess
 import sys
 from pathlib import Path
 
+
+FPS = 30
+
+
+def opening_sample_seconds(opening_duration, fps):
+    """Return samples inside [0, opening_duration), including its final frame."""
+    if opening_duration <= 0 or fps <= 0:
+        raise ValueError("opening duration and fps must be positive")
+    last_frame = opening_duration - (1 / fps)
+    whole_seconds = [float(second) for second in range(3) if second <= last_frame]
+    if not whole_seconds or abs(whole_seconds[-1] - last_frame) > 1e-9:
+        whole_seconds.append(last_frame)
+    return whole_seconds
+
+
+def timestamp_label(seconds):
+    return f"{seconds:.3f}".rstrip("0").rstrip(".")
+
+
 video, story_path, output_dir = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
 output_dir.mkdir(parents=True, exist_ok=True)
 story = json.loads(story_path.read_text())
@@ -28,8 +47,10 @@ if "request_id" not in story:
 else:
     checks["headline_matches_verified_story"] = opening["caption"].replace("\n", "") == story["claims"][0]["text"]
 frames = []
-for seconds in (0.0, 1.0, 2.0, 3.0):
-    stem = f"opening-{seconds:g}s"
+opening_duration = opening["end"] - opening["start"]
+for seconds in opening_sample_seconds(opening_duration, FPS):
+    label = timestamp_label(seconds)
+    stem = f"opening-{label}s"
     png = output_dir / f"{stem}.png"
     subprocess.run([
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", str(seconds), "-i", str(video),
@@ -53,8 +74,8 @@ for seconds in (0.0, 1.0, 2.0, 3.0):
         "high_contrast": contrast >= 22,
     }
     frames.append(result)
-    checks[f"frame_{seconds:.1f}s_visible"] = result["not_black_or_empty"]
-    checks[f"frame_{seconds:.1f}s_contrast"] = result["high_contrast"]
+    checks[f"frame_{label}s_visible"] = result["not_black_or_empty"]
+    checks[f"frame_{label}s_contrast"] = result["high_contrast"]
 report = {
     "purpose": "0-3秒を音声なしのSNSサムネイルとして検査",
     "headline": opening["caption"],
