@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Extract and machine-check the four thumbnail frames used by opening QA."""
 import json
+import hashlib
 import statistics
 import subprocess
 import sys
@@ -70,11 +71,28 @@ checks = {
     "headline_is_concise": all(len(line) <= 18 for line in opening["caption"].splitlines()),
 }
 if "content_hash" in story:
+    reference = Path(story.get("opening", {}).get("character_reference", ""))
+    opening_asset = Path(story.get("opening", {}).get("character_asset", ""))
+    render_manifest_path = video.with_suffix(".render.json")
+    try:
+        render_manifest = json.loads(render_manifest_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        render_manifest = {}
+    try:
+        opening_asset_digest = hashlib.sha256(opening_asset.read_bytes()).hexdigest()
+        opening_asset_is_png = opening_asset.stat().st_size > 64 and opening_asset.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    except OSError:
+        opening_asset_digest, opening_asset_is_png = "", False
     checks.update({
         "visual_standard_is_current": story.get("visual_standard") == "ai-news-visual-v1",
         "template_is_supported": story.get("visual_template", {}).get("id") in {"A", "B", "C"},
         "mozo_is_standard_character": story.get("opening", {}).get("character") == "mozo",
         "major_elements_static_for_full_opening": story.get("opening", {}).get("major_elements_static") is True,
+        "official_mozo_reference_declared": str(reference) == "assets/visual-references/mozo/mozo-character-reference.png",
+        "approved_mozo_opening_asset_declared": str(opening_asset) == "assets/visual-references/mozo/mozo-opening.png",
+        "approved_mozo_opening_asset_is_readable_png": opening_asset_is_png,
+        "renderer_used_approved_mozo_opening_asset": render_manifest.get("used_mozo_opening_asset") is True,
+        "rendered_mozo_opening_asset_hash_matches": bool(opening_asset_digest) and render_manifest.get("mozo_opening_asset_sha256") == opening_asset_digest,
     })
 layout_details = {
     "line_count": len(opening["caption"].splitlines()), "maximum_lines": 2,
