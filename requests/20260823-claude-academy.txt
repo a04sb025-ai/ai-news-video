@@ -1,0 +1,1 @@
+Render request: validate approved mozo-opening.png integration from PR #22.
