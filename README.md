@@ -36,6 +36,8 @@ Ubuntu runnerはFFmpeg、ffprobe、Noto CJKフォント、Open JTalkをaptから
 
 Actionsにはリポジトリ読み取り権限だけを与えます。Secretsおよび有料APIキーは不要です。第三者URLへアクセスするため、信頼できる公式URLだけを入力してください。
 
+Claude Academyの固定one-shotは、最新の`main`で **Actions → One-shot Claude Academy video → Run workflow** から手動実行できます。既存のpush / pull request起動と公開品質ゲートも引き続き有効です。
+
 ## ニュースURLを受け取った後の手順
 
 ```bash
