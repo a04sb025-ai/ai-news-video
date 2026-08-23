@@ -89,7 +89,7 @@ def perform_qa(story: Path, video: Path, reports: Path) -> dict:
     run([sys.executable, "scripts/check_opening_frames.py", str(video), str(story), str(opening)],
         log=reports / "opening-qa.txt")
     run([sys.executable, "scripts/extract_review_frames.py", str(video), str(scenes), str(story)])
-    run([sys.executable, "scripts/check_video.py", str(video)], log=reports / "qa.txt")
+    run([sys.executable, "scripts/check_video.py", str(video), str(story)], log=reports / "qa.txt")
     run([sys.executable, "scripts/run_video_qa.py", str(video), str(reports)])
     run([
         sys.executable, "scripts/write_automation_result.py", str(story), str(video),
