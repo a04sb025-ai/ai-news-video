@@ -38,6 +38,7 @@ class ScaffoldTest(unittest.TestCase):
             self.assertTrue(all(len(line) <= 18 for line in lines))
     def test_workflow_supports_dedicated_and_generic_rendering(self):
         workflow = (ROOT / ".github/workflows/render-video.yml").read_text()
+        opening_wrapper = (ROOT / "scripts/opening_qa_with_correction.sh").read_text()
         self.assertIn("default: teen_chatgpt", workflow)
         self.assertIn("make render-teen-news", workflow)
         self.assertIn("if: inputs.render_target == 'generic_url'", workflow)
@@ -45,7 +46,8 @@ class ScaffoldTest(unittest.TestCase):
         self.assertIn("config/stories/chatgpt-teens-ja.json", workflow)
         self.assertIn("OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}", workflow)
         self.assertIn("continue-on-error: true", workflow)
-        self.assertIn("scripts/check_opening_frames.py", workflow)
+        self.assertIn("scripts/opening_qa_with_correction.sh", workflow)
+        self.assertIn("scripts/check_opening_frames.py", opening_wrapper)
         self.assertIn("scripts/extract_review_frames.py", workflow)
         self.assertIn("reports/opening", workflow)
         self.assertIn("reports/scenes", workflow)
