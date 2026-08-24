@@ -25,16 +25,35 @@ def build_report(story):
     checks["captions_do_not_expose_internal_keys"] = not any(
         key in cue.get("caption", "") for cue in cues for key in INTERNAL_KEYS
     )
-    if story.get("explanation_contract") == "four-page-v1":
+
+    contract = story.get("explanation_contract")
+    if contract == "four-page-v1":
         pages = cues[:4]
         checks["all_four_pages_have_subtitles"] = len(pages) == 4 and all(bool(cue.get("subtitle", "").strip()) for cue in pages)
         checks["subtitles_cover_full_narration"] = len(pages) == 4 and all(
             compact(cue.get("subtitle", "")) == compact(cue.get("source_narration", "")) for cue in pages
         )
         checks["support_text_present_on_all_pages"] = len(pages) == 4 and all(bool(cue.get("support_text", "").strip()) for cue in pages)
-    return {"checks": checks, "skipped_unused_terms": skipped, "tts_text": narration,
-            "passed": all(checks.values()),
-            "manual_review": "完成MP4を再生し、読み・字幕全文・各シーンの同期を確認する"}
+    elif contract == "adaptive-pages-v1":
+        pages = cues[:-1]
+        expected = int(story.get("adaptive_page_count", 0))
+        checks["all_adaptive_pages_have_subtitles"] = (
+            4 <= expected <= 10 and len(pages) == expected and all(bool(cue.get("subtitle", "").strip()) for cue in pages)
+        )
+        checks["subtitles_cover_full_narration"] = len(pages) == expected and all(
+            compact(cue.get("subtitle", "")) == compact(cue.get("source_narration", "")) for cue in pages
+        )
+        checks["support_text_present_on_all_pages"] = len(pages) == expected and all(
+            bool(cue.get("support_text", "").strip()) for cue in pages
+        )
+
+    return {
+        "checks": checks,
+        "skipped_unused_terms": skipped,
+        "tts_text": narration,
+        "passed": all(checks.values()),
+        "manual_review": "完成MP4を再生し、読み・字幕全文・各シーンの同期を確認する",
+    }
 
 
 def main():

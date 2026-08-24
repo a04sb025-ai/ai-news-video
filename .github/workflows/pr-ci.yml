@@ -76,3 +76,39 @@ jobs:
           assert result['auto_publish_ready'] is False
           assert result['used_generated_images'] is False
           PY
+      - name: Fallback-render adaptive explainer and verify mobile readability contract
+        env:
+          OPENAI_API_KEY: ''
+        run: |
+          mkdir -p work/ci-adaptive dist/ci-adaptive reports/ci-adaptive
+          python3 scripts/adaptive_daily_story.py prepare tests/fixtures/daily-story-adaptive-valid.json work/ci-adaptive
+          set +e
+          python3 scripts/generate_story_images.py work/ci-adaptive/story.json | tee reports/ci-adaptive/image-generation.txt
+          image_status=${PIPESTATUS[0]}
+          set -e
+          test "$image_status" -eq 2
+          VIDEO="dist/ci-adaptive/$(cat work/ci-adaptive/video-filename.txt)"
+          python3 scripts/check_story_voice.py work/ci-adaptive/story.json reports/ci-adaptive/voice-script-qa.json | tee reports/ci-adaptive/voice-script-qa.txt
+          python3 scripts/render_adaptive_explainer.py work/ci-adaptive/story.json "$VIDEO"
+          scripts/opening_qa_with_correction.sh "$VIDEO" work/ci-adaptive/story.json reports/ci-adaptive/opening
+          python3 scripts/check_adaptive_video.py "$VIDEO" work/ci-adaptive/story.json | tee reports/ci-adaptive/qa.txt
+          python3 scripts/run_video_qa.py "$VIDEO" reports/ci-adaptive
+          python3 scripts/write_adaptive_result.py work/ci-adaptive/story.json "$VIDEO" reports/ci-adaptive reports/ci-adaptive/automation-result.json
+          python3 - <<'PY'
+          import json
+          story=json.load(open('work/ci-adaptive/story.json'))
+          result=json.load(open('reports/ci-adaptive/automation-result.json'))
+          voice=json.load(open('reports/ci-adaptive/voice-script-qa.json'))
+          manifest=json.load(open('dist/ci-adaptive/' + open('work/ci-adaptive/video-filename.txt').read().strip().replace('.mp4','.render.json')))
+          assert story['explanation_contract'] == 'adaptive-pages-v1'
+          assert story['adaptive_page_count'] == 5
+          assert story['expected_duration_seconds'] > 25
+          assert all(len(line) <= 9 for line in story['script'][0]['caption'].splitlines())
+          assert voice['checks']['subtitles_cover_full_narration'] is True
+          assert manifest['renderer'] == 'adaptive-explainer-v1'
+          assert manifest['subtitle_font_size_px'] >= 48
+          assert manifest['opening_headline_target_chars_per_line'] <= 10
+          assert result['success'] is True
+          assert result['auto_publish_ready'] is False
+          assert result['used_generated_images'] is False
+          PY
