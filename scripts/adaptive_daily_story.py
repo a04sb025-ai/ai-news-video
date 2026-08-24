@@ -33,7 +33,7 @@ EXPLANATION_CONTRACT = "adaptive-pages-v1"
 MOZO_DESIGN_REFERENCE = "assets/visual-references/mozo/mozo-character-reference.png"
 MOZO_OPENING_ASSET = "assets/visual-references/mozo/mozo-opening.png"
 RICH_SPOKEN_CHARACTER_BUDGET = 52
-OUTRO_SECONDS = 1.5
+OUTRO_SECONDS = 2.5
 IMAGE_BUDGET = 4
 BREAK_AFTER = ("。", "！", "？", "、", "：", ":", "—", "・", " ")
 
