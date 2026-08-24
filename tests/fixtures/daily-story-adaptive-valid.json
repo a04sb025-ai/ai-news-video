@@ -1,0 +1,73 @@
+{
+  "request_id": "daily-news-adaptive-ci",
+  "source_url": "https://example.com/ai-model-news",
+  "article_url": "https://aitoolwatch.jp/news/",
+  "headline": "いま30B級が注目される理由",
+  "hook": "30B級のAIモデルが相次いで登場し、注目を集めています。",
+  "summary": "AIモデルにはさまざまな規模があり、30B級はその中の一つです。",
+  "points": [
+    "30Bは約300億パラメータ",
+    "性能と扱いやすさの両立を狙う"
+  ],
+  "news_angle": "いま30B級が注目される理由",
+  "narration_terms": {
+    "30B": "サーティービー"
+  },
+  "pages": [
+    {
+      "page_role": "hook",
+      "headline": "いま30B級が注目される理由",
+      "support_text": "モデルの大きさと使いやすさのバランスが焦点",
+      "narration": "30B級のAIモデルが相次いで登場し、注目を集めています。",
+      "subtitle": "30B級のAIモデルが相次いで登場し、注目を集めています。",
+      "visual_intent": "小型・30B級・大型の三つの規模を横並びで見せる",
+      "key_visuals": ["小型モデル", "30B級", "大型モデル"],
+      "mozo_line": "まず全体像",
+      "mozo_usage": "中央の30B級を指す"
+    },
+    {
+      "page_role": "landscape",
+      "headline": "モデルには幅がある",
+      "support_text": "小さなモデルから非常に大きなモデルまで存在する",
+      "narration": "AIモデルには、小さなものから非常に大きなものまで、いろいろな規模があります。",
+      "subtitle": "AIモデルには、小さなものから非常に大きなものまで、いろいろな規模があります。",
+      "visual_intent": "モデル規模を左から右へ大きくなる帯で示す",
+      "key_visuals": ["小型", "中規模", "大型"],
+      "mozo_line": "大きさはいろいろ",
+      "mozo_usage": "左から右へ視線を案内する"
+    },
+    {
+      "page_role": "definition",
+      "headline": "30Bは約300億個",
+      "support_text": "Bはbillion。パラメータ数の規模を表す",
+      "narration": "30BのBはビリオンで、約300億個のパラメータを持つ規模を表します。",
+      "subtitle": "30BのBはビリオンで、約300億個のパラメータを持つ規模を表します。",
+      "visual_intent": "30Bと300億を対応させ、パラメータ数の尺度だと示す",
+      "key_visuals": ["30B", "300億", "パラメータ"],
+      "mozo_line": "数字の意味",
+      "mozo_usage": "30Bから300億への対応を指す"
+    },
+    {
+      "page_role": "position",
+      "headline": "30B級は中間の選択肢",
+      "support_text": "小型と超大型の間でバランスを狙う規模",
+      "narration": "30B級は、小型モデルと非常に大きなモデルの間にある選択肢として位置づけられます。",
+      "subtitle": "30B級は、小型モデルと非常に大きなモデルの間にある選択肢として位置づけられます。",
+      "visual_intent": "三段階のスケールで30B級を中央に配置する",
+      "key_visuals": ["小型モデル", "30B級", "大型モデル"],
+      "mozo_line": "真ん中あたり",
+      "mozo_usage": "中央の位置を指す"
+    },
+    {
+      "page_role": "conclusion",
+      "headline": "バランスが注目点",
+      "support_text": "性能と扱いやすさを両立できる可能性が注目される",
+      "narration": "だから30B級は、性能と扱いやすさのバランスを狙う規模として注目されています。",
+      "subtitle": "だから30B級は、性能と扱いやすさのバランスを狙う規模として注目されています。",
+      "visual_intent": "性能と扱いやすさの二軸の中央に30B級を置く",
+      "key_visuals": ["性能", "扱いやすさ", "30B級"],
+      "mozo_line": "ここが理由",
+      "mozo_usage": "二つの軸の中央を指す"
+    }
+  ]
+}
