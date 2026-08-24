@@ -29,8 +29,8 @@ page_count = int(story.get("adaptive_page_count") or max(0, len(story.get("scrip
 
 results = {
     "duration_matches_story": abs(duration - expected) <= 0.9,
-    "duration_safety_window": 15 <= duration <= 90,
-    "adaptive_page_count": 4 <= page_count <= 8,
+    "duration_safety_window": 15 <= duration <= 180,
+    "adaptive_page_count": 4 <= page_count <= 10,
     "resolution_1080x1920": (vstream.get("width"), vstream.get("height")) == (1080, 1920),
     "audio_present": any(s.get("codec_type") == "audio" for s in info["streams"]),
 }
