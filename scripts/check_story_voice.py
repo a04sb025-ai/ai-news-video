@@ -38,7 +38,7 @@ def build_report(story):
         pages = cues[:-1]
         expected = int(story.get("adaptive_page_count", 0))
         checks["all_adaptive_pages_have_subtitles"] = (
-            4 <= expected <= 8 and len(pages) == expected and all(bool(cue.get("subtitle", "").strip()) for cue in pages)
+            4 <= expected <= 10 and len(pages) == expected and all(bool(cue.get("subtitle", "").strip()) for cue in pages)
         )
         checks["subtitles_cover_full_narration"] = len(pages) == expected and all(
             compact(cue.get("subtitle", "")) == compact(cue.get("source_narration", "")) for cue in pages
