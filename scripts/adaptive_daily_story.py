@@ -32,7 +32,7 @@ VISUAL_STANDARD = "ai-news-visual-v1"
 EXPLANATION_CONTRACT = "adaptive-pages-v1"
 MOZO_DESIGN_REFERENCE = "assets/visual-references/mozo/mozo-character-reference.png"
 MOZO_OPENING_ASSET = "assets/visual-references/mozo/mozo-opening.png"
-RICH_SPOKEN_CHARACTER_BUDGET = 68
+RICH_SPOKEN_CHARACTER_BUDGET = 52
 OUTRO_SECONDS = 1.5
 IMAGE_BUDGET = 4
 BREAK_AFTER = ("。", "！", "？", "、", "：", ":", "—", "・", " ")
@@ -106,9 +106,9 @@ def wrap_subtitle(text):
 
 
 def scene_seconds(narration, terms):
-    """Prefer comprehension over a fixed total duration; avoid rushed TTS."""
+    """Allocate time for natural Japanese speech instead of forcing a short fixed slot."""
     spoken = spoken_character_count(speak(narration, terms))
-    return round(max(5.5, min(9.5, 1.8 + spoken / 7.0)), 2)
+    return round(max(7.0, min(24.0, 2.5 + spoken / 2.2)), 2)
 
 
 def validate(payload):
@@ -134,8 +134,8 @@ def validate(payload):
         errors.append("narration_terms must map non-empty terms to readings")
 
     pages = payload.get("pages")
-    if not isinstance(pages, list) or not 4 <= len(pages) <= 8:
-        errors.append("pages must contain 4-8 items")
+    if not isinstance(pages, list) or not 4 <= len(pages) <= 10:
+        errors.append("pages must contain 4-10 items")
     else:
         if pages[0].get("page_role") != "hook":
             errors.append("first page must use role hook")
@@ -150,8 +150,8 @@ def validate(payload):
             if role not in ALLOWED_ROLES:
                 errors.append(f"{prefix} page_role is unsupported")
             for field, maximum in (
-                ("headline", 26), ("support_text", 64), ("narration", 82),
-                ("subtitle", 82), ("visual_intent", 180), ("mozo_line", 16), ("mozo_usage", 100),
+                ("headline", 26), ("support_text", 64), ("narration", 68),
+                ("subtitle", 68), ("visual_intent", 180), ("mozo_line", 16), ("mozo_usage", 100),
             ):
                 if not _valid_text(page.get(field), maximum):
                     errors.append(f"{prefix} {field} is required and must be at most {maximum} characters")
