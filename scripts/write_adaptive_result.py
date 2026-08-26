@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 import write_automation_result as base
 
+
 def main():
     story_path, video, reports, output = map(Path, sys.argv[1:5])
     story = base.read_json(story_path)
@@ -19,7 +20,11 @@ def main():
     )
     result.setdefault("qa", {})["adaptive_explainer_renderer_used"] = adaptive_ok
     result["success"] = all(result["qa"].values())
-    result["auto_publish_ready"] = result["success"] and result.get("used_generated_images") is True
+    publish_blockers = [f"qa:{name}" for name, passed in result["qa"].items() if not passed]
+    if result.get("used_generated_images") is not True:
+        publish_blockers.append("generated_images_not_ready")
+    result["publish_blockers"] = publish_blockers
+    result["auto_publish_ready"] = result["success"] and not publish_blockers
     result.setdefault("qa_details", {})["adaptive_readability_qa"] = {
         "passed": adaptive_ok,
         "reason": "adaptive readability evidence confirmed" if adaptive_ok else "adaptive readability evidence missing",
