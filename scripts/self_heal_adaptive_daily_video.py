@@ -14,6 +14,37 @@ RENDERER = "scripts/render_adaptive_explainer.py"
 MAX_REPAIRS = int(os.environ.get("SELF_HEAL_MAX_REPAIRS", "2"))
 
 
+def failed_checks(result: dict) -> list[str]:
+    return [name for name, passed in result.get("qa", {}).items() if passed is not True]
+
+
+def publish_blockers(result: dict) -> list[str]:
+    explicit = result.get("publish_blockers")
+    if isinstance(explicit, list):
+        return [str(value) for value in explicit if str(value)]
+    blockers = [f"qa:{name}" for name in failed_checks(result)]
+    if result.get("success") is True and result.get("auto_publish_ready") is not True and not blockers:
+        blockers.append("publish_gate_unspecified")
+    return blockers
+
+
+def result_is_complete(result: dict) -> bool:
+    return isinstance(result.get("qa"), dict) and bool(result.get("qa")) and "success" in result
+
+
+def publish_only_retryable(result: dict, attempts: list[dict], has_image_key: bool) -> bool:
+    """Only retry a publish-only block when image generation can still change the result."""
+    if failed_checks(result):
+        return True
+    blockers = publish_blockers(result)
+    if blockers != ["generated_images_not_ready"] or not has_image_key:
+        return False
+    for attempt in attempts:
+        if attempt.get("regenerated_images") is True and attempt.get("publish_blockers") == blockers:
+            return False
+    return True
+
+
 def perform_qa(story: Path, video: Path, reports: Path) -> dict:
     opening = reports / "opening"
     scenes = reports / "scenes"
@@ -41,15 +72,39 @@ def main() -> int:
     reports.mkdir(parents=True, exist_ok=True)
     result = base.read_json(reports / "automation-result.json")
     attempts = []
+    has_image_key = bool(os.environ.get("OPENAI_API_KEY"))
 
     if result.get("auto_publish_ready") is True:
-        summary = {"status": "ready", "repairs": 0, "attempts": [], "final": result}
+        summary = {
+            "status": "ready",
+            "repairs": 0,
+            "attempts": [],
+            "failed_checks": [],
+            "publish_blockers": [],
+            "final": result,
+        }
         (reports / "self-heal-summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
         return 0
 
     for repair in range(1, MAX_REPAIRS + 1):
         if base.is_semantic_stop(result):
-            attempts.append({"repair": repair, "action": "stopped", "reason": "semantic-or-voice-gate"})
+            attempts.append({
+                "repair": repair,
+                "action": "stopped",
+                "reason": "semantic-or-voice-gate",
+                "failed_checks": failed_checks(result),
+                "publish_blockers": publish_blockers(result),
+            })
+            break
+
+        if result_is_complete(result) and not publish_only_retryable(result, attempts, has_image_key):
+            attempts.append({
+                "repair": repair,
+                "action": "stopped",
+                "reason": "non-repairable-publish-gate",
+                "failed_checks": failed_checks(result),
+                "publish_blockers": publish_blockers(result),
+            })
             break
 
         base.archive_attempt(reports, repair, "before")
@@ -63,8 +118,13 @@ def main() -> int:
                                  log=reports / f"self-heal-render-{repair}.txt")
         if render_status != 0 or not video.is_file():
             attempts.append({
-                "repair": repair, "action": "rerender", "renderer": RENDERER,
-                "rendered": False, "regenerated_images": regenerated,
+                "repair": repair,
+                "action": "rerender",
+                "renderer": RENDERER,
+                "rendered": False,
+                "regenerated_images": regenerated,
+                "failed_checks": failed_checks(result),
+                "publish_blockers": publish_blockers(result),
             })
             continue
 
@@ -79,7 +139,8 @@ def main() -> int:
             "regenerated_images": regenerated,
             "compressed": compressed,
             "auto_publish_ready": ready,
-            "failed_checks": [name for name, passed in result.get("qa", {}).items() if not passed],
+            "failed_checks": failed_checks(result),
+            "publish_blockers": publish_blockers(result),
         })
         base.archive_attempt(reports, repair, "after")
         if ready:
@@ -87,13 +148,19 @@ def main() -> int:
 
     final = base.read_json(reports / "automation-result.json")
     ready = final.get("auto_publish_ready") is True
+    final_failed = failed_checks(final)
+    final_blockers = publish_blockers(final)
+    repair_count = sum(1 for attempt in attempts if attempt.get("action") in {"rerender", "safe-rerender"})
+    status = "ready" if ready else ("blocked-publish-gate" if final.get("success") is True else "failed-qa")
     summary = {
-        "status": "ready" if ready else "needs-human-review",
+        "status": status,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "repairs": len(attempts),
+        "repairs": repair_count,
         "attempts": attempts,
+        "failed_checks": final_failed,
+        "publish_blockers": final_blockers,
         "final": final,
-        "policy": "Never bypass factual, voice, headline, readability, subtitle-completeness, or media QA gates.",
+        "policy": "Never bypass factual, voice, headline, readability, subtitle-completeness, generated-image, or media QA gates.",
     }
     (reports / "self-heal-summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps(summary, ensure_ascii=False))
