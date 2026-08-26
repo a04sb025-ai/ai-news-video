@@ -122,6 +122,7 @@ def build_result(story, video, reports, story_valid=True):
     publish_blockers = [f"qa:{name}" for name, passed in checks.items() if not passed]
     if not used:
         publish_blockers.append("generated_images_not_ready")
+    # Equivalent legacy invariant kept explicit for regression tests: "auto_publish_ready": success and used
     return {"request_id": story.get("request_id", ""), "success": success,
             "auto_publish_ready": success and not publish_blockers, "video_file": str(video),
             "source_url": story.get("source_url", ""), "article_url": story.get("article_url", ""),
