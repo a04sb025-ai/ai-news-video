@@ -25,12 +25,30 @@ def canonical_path(path):
     return Path(path).expanduser().resolve(strict=False)
 
 
+def image_manifest_shape_valid(story, expected):
+    """Validate legacy four-image stories and adaptive all-scene image manifests."""
+    if story.get("all_scene_visuals_required") is True:
+        try:
+            page_count = int(story.get("adaptive_page_count", 0))
+        except (TypeError, ValueError):
+            page_count = 0
+        scenes = story.get("image_scenes", [])
+        return bool(
+            4 <= page_count <= 10
+            and len(expected) == page_count
+            and isinstance(scenes, list)
+            and len(scenes) == page_count
+        )
+    return len(expected) == 4
+
+
 def generated_images_ready(story, video):
     expected = story.get("image_assets", [])
     image_dir = canonical_path(story.get("image_asset_dir", ""))
     digest = story.get("content_hash")
     correct_dir = digest and image_dir.parts[-3:] == (story.get("request_id"), digest, "daily-editorial-v1")
-    files_ok = len(expected) == 4 and all(
+    manifest_ok = isinstance(expected, list) and image_manifest_shape_valid(story, expected)
+    files_ok = manifest_ok and all(
         (image_dir / name).is_file() and (image_dir / name).stat().st_size > 0 for name in expected
     )
     log = read_json(image_dir / "image-generation-log.json")
@@ -42,7 +60,7 @@ def generated_images_ready(story, video):
                 and canonical_path(render.get("image_directory", "")) == image_dir
                 and [canonical_path(path) for path in render.get("images", [])]
                 == [canonical_path(image_dir / name) for name in expected])
-    return bool(correct_dir and files_ok and log_ok and rendered)
+    return bool(correct_dir and manifest_ok and files_ok and log_ok and rendered)
 
 
 def mozo_opening_asset_ready(story, video):
@@ -101,10 +119,14 @@ def build_result(story, video, reports, story_valid=True):
         media.get(key, {}).get("reason", f"{key} evidence missing") if key in {"decode_error_free", "black_frame_check"} else
         ("all headline layout rules passed" if value else "; ".join(opening.get("reasons", [])) or "headline QA evidence missing")
     )} for key, value in checks.items() if key in {"decode_error_free", "black_frame_check", "headline_layout_qa"}}
+    publish_blockers = [f"qa:{name}" for name, passed in checks.items() if not passed]
+    if not used:
+        publish_blockers.append("generated_images_not_ready")
     return {"request_id": story.get("request_id", ""), "success": success,
-            "auto_publish_ready": success and used, "video_file": str(video),
+            "auto_publish_ready": success and not publish_blockers, "video_file": str(video),
             "source_url": story.get("source_url", ""), "article_url": story.get("article_url", ""),
-            "used_generated_images": used, "qa": checks, "qa_details": details}
+            "used_generated_images": used, "publish_blockers": publish_blockers,
+            "qa": checks, "qa_details": details}
 
 
 def main():
