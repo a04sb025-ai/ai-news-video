@@ -7,9 +7,24 @@
 ## Actions から実行する
 
 1. GitHub の **Actions → AB test image models → Run workflow** を開く。
-2. リポジトリ内の prepared `story.json` を `story_json_path` に指定する。未変換の verified payload を使う場合は、代わりに `payload_json_path` を指定する。両方を渡した場合は story が優先される。
-3. 必要なら `request_id` を指定する。`models`（既定 `gpt-image-1,gpt-image-2`）、`size`（`1024x1536`）、`quality`（`high`）は通常そのまま実行する。
-4. Repository Secret `OPENAI_API_KEY` が必要。片方が未対応または API エラーになっても他方の処理と成果物保存は続き、workflow の最後は「比較不能」として失敗する。別モデルへの暗黙のフォールバックはしない。
+2. 通常は `story_json_path` と `payload_json_path` を空欄にし、`payload_json` に verified payload の JSON 本文を直接貼り付ける。GitHub Actions は checkout されたファイルしか参照できないため、ローカル専用や gitignore 対象の `work/.../story.json` をパス指定しても読めない。
+3. リポジトリへコミット済みの prepared `story.json` がある場合のみ `story_json_path` を使う。コミット済みの verified payload を使う場合は `payload_json_path` を使う。入力優先順位は `story_json_path` → `payload_json_path` → `payload_json`。
+4. 必要なら `request_id` を指定する。`models`（既定 `gpt-image-1,gpt-image-2`）、`size`（`1024x1536`）、`quality`（`high`）は通常そのまま実行する。
+5. Repository Secret `OPENAI_API_KEY` が必要。片方が未対応または API エラーになっても他方の処理と成果物保存は続き、workflow の最後は「比較不能」として失敗する。別モデルへの暗黙のフォールバックはしない。
+
+`payload_json` の最小例:
+
+```json
+{
+  "request_id": "2026-08-29-image-ab-test",
+  "source_url": "https://example.com/official-source",
+  "article_url": "https://aitoolwatch.jp/articles/example",
+  "headline": "検証済みのニュース見出し",
+  "hook": "冒頭で伝える短いフック",
+  "summary": "ニュースの検証済み要約",
+  "points": ["重要ポイント1", "重要ポイント2"]
+}
+```
 
 ローカルでも Pillow と API key を用意して実行できる。
 
