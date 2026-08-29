@@ -69,12 +69,17 @@ jobs:
 
           test_path = Path('tests/test_all_scene_split_layout.py')
           test_path.write_text('''import unittest\nfrom pathlib import Path\n\nROOT = Path(__file__).resolve().parents[1]\n\n\nclass AllSceneSplitLayoutTest(unittest.TestCase):\n    def test_non_opening_images_reserve_lower_text_safe_zone(self):\n        source = (ROOT / "scripts/generate_story_images.py").read_text()\n        self.assertIn("BODY_LAYOUT = (", source)\n        self.assertIn("lower 42 percent", source)\n        self.assertIn("between 8 and 54 percent", source)\n        self.assertIn("else BODY_LAYOUT", source)\n        self.assertIn("one-page-one-message", source)\n        self.assertIn("daily-editorial-v5-all-scenes-split-text-visual", source)\n\n    def test_body_renderer_uses_reserved_space_without_large_overlay(self):\n        renderer = (ROOT / "scripts/render_adaptive_explainer.py").read_text()\n        self.assertNotIn("rect_path(42, 1110, 996, 620)", renderer)\n        self.assertIn('BODY_LAYOUT_CONTRACT = "split-text-visual-v1"', renderer)\n        self.assertIn(r"\\pos(90,1105)", renderer)\n        self.assertIn('"body_large_overlay_panel": False', renderer)\n        self.assertIn('"body_generated_image_full_frame": True', renderer)\n        self.assertIn('"body_text_safe_area_ratio": {"top": 0.58, "bottom": 0.91}', renderer)\n\n\nif __name__ == "__main__":\n    unittest.main()\n''')
+
+          opening_test_path = Path('tests/test_thumbnail_split_layout.py')
+          opening_test = opening_test_path.read_text()
+          opening_test = opening_test.replace('daily-editorial-v4-split-text-visual', 'daily-editorial-v5-all-scenes-split-text-visual')
+          opening_test_path.write_text(opening_test)
           PY
 
           python3 -m unittest tests.test_thumbnail_split_layout tests.test_all_scene_split_layout tests.test_thumbnail_opening_modes
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scripts/generate_story_images.py scripts/render_adaptive_explainer.py tests/test_all_scene_split_layout.py
+          git add scripts/generate_story_images.py scripts/render_adaptive_explainer.py tests/test_thumbnail_split_layout.py tests/test_all_scene_split_layout.py
           git commit -m "Apply split text and visual layout to all scenes"
           git push origin HEAD:improve/all-scenes-split-layout
