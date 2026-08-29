@@ -37,6 +37,7 @@ RICH_SPOKEN_CHARACTER_BUDGET = 52
 OUTRO_SECONDS = 2.5
 IMAGE_BUDGET = 4
 BREAK_AFTER = ("。", "！", "？", "、", "：", ":", "—", "・", " ")
+OPENING_PROTECTED_TOKENS = ("投資", "出資", "買収", "増産", "拡大", "規制", "公開", "発表", "導入", "提供", "開始", "強化", "更新", "発売")
 
 
 def _valid_text(value, maximum):
@@ -68,7 +69,7 @@ def spoken_character_count(text):
     )
 
 
-def _split_lines(text, limit, max_lines):
+def _split_lines(text, limit, max_lines, protected_tokens=()):
     text = " ".join(str(text).split())
     if not text:
         raise ValueError("text must not be empty")
@@ -84,6 +85,17 @@ def _split_lines(text, limit, max_lines):
             if remaining[i - 1] in BREAK_AFTER
         ]
         cut = max(candidates) if candidates else upper
+        for token in protected_tokens:
+            start = remaining.find(token)
+            while start >= 0:
+                end = start + len(token)
+                if start < cut < end:
+                    if start >= lower:
+                        cut = start
+                    elif end <= upper:
+                        cut = end
+                    break
+                start = remaining.find(token, start + 1)
         lines.append(remaining[:cut].rstrip())
         remaining = remaining[cut:].lstrip()
     if remaining:
@@ -95,7 +107,7 @@ def _split_lines(text, limit, max_lines):
 
 def opening_caption(text):
     """Keep the opening headline physically safe at large Japanese display sizes."""
-    return _split_lines(text, limit=9, max_lines=2)
+    return _split_lines(text, limit=9, max_lines=2, protected_tokens=OPENING_PROTECTED_TOKENS)
 
 
 def page_caption(text):

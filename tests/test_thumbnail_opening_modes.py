@@ -68,6 +68,12 @@ class ThumbnailOpeningModesTest(unittest.TestCase):
             self.assertEqual(story["image_scenes"][0]["thumbnail_style"], style)
             self.assertIn(story["visual_template"]["id"], {"A", "B", "C"})
 
+    def test_opening_caption_keeps_event_words_intact(self):
+        self.assertEqual(
+            module.opening_caption("キオクシア5兆円投資、何が変わる？"),
+            "キオクシア5兆円\n投資、何が変わる？",
+        )
+
     def test_invalid_thumbnail_style_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "thumbnail_style must be A, B or C"):
             module.validate(payload("X"))
