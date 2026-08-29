@@ -6,6 +6,10 @@ ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("adaptive_daily_story", ROOT / "scripts/adaptive_daily_story.py")
 module = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(module)
+opening_source = (ROOT / "scripts/check_opening_frames.py").read_text()
+opening_prefix = opening_source.split("video, story_path, output_dir =", 1)[0]
+opening_namespace = {}
+exec(opening_prefix, opening_namespace)
 
 
 def page(role, headline):
@@ -71,6 +75,14 @@ class ThumbnailOpeningModesTest(unittest.TestCase):
         self.assertIn('"opening_support_copy_visible": False', renderer)
         self.assertIn('"opening_subtitle_visible": False', renderer)
         self.assertIn('add_body_page(events, cue, OPENING_END, end, fade=False)', renderer)
+
+    def test_opening_qa_requires_v2_only_for_explicit_thumbnail_contract(self):
+        story = module.build_story(module.validate(payload("A")))
+        expected = opening_namespace["expected_visual_standard"]
+        self.assertEqual(expected(story), "ai-news-visual-v2-thumbnail-abc")
+        self.assertEqual(expected({"opening": {}}), "ai-news-visual-v1")
+        legacy_with_style_only = {"opening": {"thumbnail_style": "A"}}
+        self.assertEqual(expected(legacy_with_style_only), "ai-news-visual-v1")
 
 
 if __name__ == "__main__":
