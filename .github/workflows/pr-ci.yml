@@ -104,8 +104,9 @@ jobs:
           assert story['adaptive_page_count'] == 5
           assert story['expected_duration_seconds'] > 25
           assert all(len(line) <= 9 for line in story['script'][0]['caption'].splitlines())
+          assert story['opening']['thumbnail_style_contract'] == 'A-breaking-B-magazine-C-declarative'
           assert voice['checks']['subtitles_cover_full_narration'] is True
-          assert manifest['renderer'] == 'adaptive-explainer-v1'
+          assert manifest['renderer'] == 'adaptive-explainer-v2-thumbnail-abc'
           assert manifest['subtitle_font_size_px'] >= 48
           assert manifest['opening_headline_target_chars_per_line'] <= 10
           assert result['success'] is True
