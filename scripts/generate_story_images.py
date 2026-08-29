@@ -25,10 +25,9 @@ COMMON = (
 OPENING_LAYOUT = (
     "Opening split-layout rule: keep the entire top 38 percent of the canvas as deliberate text-safe negative space, "
     "using only a calm low-detail continuation of the background. Do not place any face, person, machine, building, chart, "
-    "focal object, bright highlight, or essential visual evidence in that top zone. Place the dominant news subject fully below "
-    "42 percent of the canvas height, with its important details concentrated roughly between 42 and 82 percent. Keep the "
-    "lower-left corner relatively quiet for the small canonical Mozo overlay. The renderer places typography directly on the "
-    "negative space, so do not paint a title card, dark text panel, banner, box, fake headline area, or other shape intended to sit "
+    "focal object, bright highlight, or essential visual evidence in that top zone. Place the dominant news subject fully below 42 percent of the canvas height, "
+    "with its important details concentrated roughly between 42 and 82 percent. Keep the lower-left corner relatively quiet for the small canonical Mozo overlay. "
+    "The renderer places typography directly on the negative space, so do not paint a title card, dark text panel, banner, box, fake headline area, or other shape intended to sit "
     "behind text. The result must remain one continuous full-frame editorial illustration rather than two separate boxes. "
 )
 THUMBNAIL_STYLE = {
