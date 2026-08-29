@@ -1,0 +1,78 @@
+name: Temporary semantic opening wrap fix
+
+on:
+  push:
+    branches:
+      - fix/semantic-opening-wrap
+    paths:
+      - .github/workflows/tmp-semantic-opening-wrap.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/semantic-opening-wrap
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Patch semantic line wrapping and tests
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          story_path = Path('scripts/adaptive_daily_story.py')
+          story = story_path.read_text()
+
+          old = 'BREAK_AFTER = ("。", "！", "？", "、", "：", ":", "—", "・", " ")\n'
+          new = old + 'OPENING_PROTECTED_TOKENS = ("投資", "出資", "買収", "増産", "拡大", "規制", "公開", "発表", "導入", "提供", "開始", "強化", "更新", "発売")\n'
+          if 'OPENING_PROTECTED_TOKENS' not in story:
+              if old not in story:
+                  raise SystemExit('BREAK_AFTER anchor not found')
+              story = story.replace(old, new, 1)
+
+          story = story.replace(
+              'def _split_lines(text, limit, max_lines):\n',
+              'def _split_lines(text, limit, max_lines, protected_tokens=()):\n',
+              1,
+          )
+
+          anchor = '        cut = max(candidates) if candidates else upper\n        lines.append(remaining[:cut].rstrip())\n'
+          replacement = '''        cut = max(candidates) if candidates else upper\n        for token in protected_tokens:\n            start = remaining.find(token)\n            while start >= 0:\n                end = start + len(token)\n                if start < cut < end:\n                    if start >= lower:\n                        cut = start\n                    elif end <= upper:\n                        cut = end\n                    break\n                start = remaining.find(token, start + 1)\n        lines.append(remaining[:cut].rstrip())\n'''
+          if replacement not in story:
+              if anchor not in story:
+                  raise SystemExit('line-wrap anchor not found')
+              story = story.replace(anchor, replacement, 1)
+
+          story = story.replace(
+              '    return _split_lines(text, limit=9, max_lines=2)\n',
+              '    return _split_lines(text, limit=9, max_lines=2, protected_tokens=OPENING_PROTECTED_TOKENS)\n',
+              1,
+          )
+          story_path.write_text(story)
+
+          test_path = Path('tests/test_thumbnail_opening_modes.py')
+          test = test_path.read_text()
+          marker = '    def test_opening_caption_keeps_event_words_intact(self):\n'
+          if marker not in test:
+              anchor = '    def test_invalid_thumbnail_style_is_rejected(self):\n'
+              addition = '''    def test_opening_caption_keeps_event_words_intact(self):\n        self.assertEqual(\n            module.opening_caption("キオクシア5兆円投資、何が変わる？"),\n            "キオクシア5兆円\\n投資、何が変わる？",\n        )\n\n'''
+              if anchor not in test:
+                  raise SystemExit('test insertion anchor not found')
+              test = test.replace(anchor, addition + anchor, 1)
+              test_path.write_text(test)
+          PY
+
+          python3 -m unittest tests.test_thumbnail_opening_modes
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/adaptive_daily_story.py tests/test_thumbnail_opening_modes.py
+          git commit -m "Keep opening headline event words intact"
+          git push origin HEAD:fix/semantic-opening-wrap
