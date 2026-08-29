@@ -1,4 +1,5 @@
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
 
@@ -10,6 +11,14 @@ opening_source = (ROOT / "scripts/check_opening_frames.py").read_text()
 opening_prefix = opening_source.split("video, story_path, output_dir =", 1)[0]
 opening_namespace = {}
 exec(opening_prefix, opening_namespace)
+scripts_dir = str(ROOT / "scripts")
+sys.path.insert(0, scripts_dir)
+try:
+    RESULT_SPEC = importlib.util.spec_from_file_location("write_adaptive_result", ROOT / "scripts/write_adaptive_result.py")
+    adaptive_result = importlib.util.module_from_spec(RESULT_SPEC)
+    RESULT_SPEC.loader.exec_module(adaptive_result)
+finally:
+    sys.path.remove(scripts_dir)
 
 
 def page(role, headline):
@@ -83,6 +92,13 @@ class ThumbnailOpeningModesTest(unittest.TestCase):
         self.assertEqual(expected({"opening": {}}), "ai-news-visual-v1")
         legacy_with_style_only = {"opening": {"thumbnail_style": "A"}}
         self.assertEqual(expected(legacy_with_style_only), "ai-news-visual-v1")
+
+    def test_adaptive_result_requires_matching_renderer_for_each_contract(self):
+        story = module.build_story(module.validate(payload("C")))
+        self.assertEqual(adaptive_result.expected_adaptive_renderer(story), "adaptive-explainer-v2-thumbnail-abc")
+        self.assertEqual(adaptive_result.expected_adaptive_renderer({"opening": {}}), "adaptive-explainer-v1")
+        legacy_with_style_only = {"opening": {"thumbnail_style": "C"}}
+        self.assertEqual(adaptive_result.expected_adaptive_renderer(legacy_with_style_only), "adaptive-explainer-v1")
 
 
 if __name__ == "__main__":
