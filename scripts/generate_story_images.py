@@ -22,20 +22,27 @@ COMMON = (
     "Do not draw Mozo or any substitute mascot; the renderer adds the canonical character. "
     "No words, letters, numbers, logos, watermark, or readable fake UI. Show the news meaning, not AI as a symbol. "
 )
+OPENING_LAYOUT = (
+    "Opening split-layout rule: keep the entire top 38 percent of the canvas as deliberate text-safe negative space, "
+    "using only a calm low-detail continuation of the background. Do not place any face, person, machine, building, chart, "
+    "focal object, bright highlight, or essential visual evidence in that top zone. Place the dominant news subject fully below 42 percent of the canvas height, "
+    "with its important details concentrated roughly between 42 and 82 percent. Keep the lower-left corner relatively quiet for the small canonical Mozo overlay. "
+    "The renderer places typography directly on the negative space, so do not paint a title card, dark text panel, banner, box, fake headline area, or other shape intended to sit "
+    "behind text. The result must remain one continuous full-frame editorial illustration rather than two separate boxes. "
+)
 THUMBNAIL_STYLE = {
     "A": (
         "Opening thumbnail mode A (breaking-headline mood): create one concrete high-tension news scene that communicates risk, "
         "conflict, regulation, security, outage, or another verified problem immediately. Use composition and subject interaction for urgency, "
-        "not warning-icon collages, fake sirens, sensational disaster imagery, or unsupported danger. Reserve clean dark space in the upper half for a huge two-line headline. "
+        "not warning-icon collages, fake sirens, sensational disaster imagery, or unsupported danger. "
     ),
     "B": (
         "Opening thumbnail mode B (editorial magazine-cover mood): make one strong editorial hero scene around the central trend, industry shift, "
         "new concept, or why-this-matters angle. Prioritize an identifiable subject and a sophisticated magazine-cover composition, not an infographic. "
-        "Reserve clean dark space in the upper half for a huge two-line headline. "
     ),
     "C": (
         "Opening thumbnail mode C (simple declarative poster mood): show one immediately recognizable object, action, or before/after idea that makes the user-facing change obvious. "
-        "Keep the composition minimal with generous negative space and no secondary decorative objects. Reserve clean dark space in the upper half for the largest headline treatment. "
+        "Keep the composition minimal with generous negative space and no secondary decorative objects. "
     ),
 }
 TEEN = {
@@ -57,7 +64,7 @@ def story_prompts(path):
         thumbnail_style = scene.get("thumbnail_style")
         prompts[name] = (
             COMMON
-            + (THUMBNAIL_STYLE.get(thumbnail_style, "") if thumbnail_style else "")
+            + (OPENING_LAYOUT + THUMBNAIL_STYLE.get(thumbnail_style, "") if thumbnail_style else "")
             + f" Scene role: {scene['role']}."
             + f" Visual explanation type: {visual_type}."
             + (f" Visual intent: {intent}." if intent else "")
@@ -108,7 +115,7 @@ def main():
             raise SystemExit(f"image budget exceeded: maximum is {MAX_IMAGES}")
     output.mkdir(parents=True, exist_ok=True)
     log = {
-        "prompt_version": "daily-editorial-v3-thumbnail-abc" if len(sys.argv) == 2 else CONFIG["prompt_version"],
+        "prompt_version": "daily-editorial-v4-split-text-visual" if len(sys.argv) == 2 else CONFIG["prompt_version"],
         "content_hash": json.loads(Path(sys.argv[1]).read_text()).get("content_hash") if len(sys.argv) == 2 else None,
         "maximum": MAX_IMAGES,
         "expected_images": list(prompts),
