@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render adaptive daily AI-news explainers with large mobile-readable text."""
+"""Render adaptive daily AI-news explainers with mobile-first thumbnail openings."""
 from __future__ import annotations
 
 import hashlib
@@ -36,6 +36,10 @@ USE_MOZO_OPENING_ASSET = (
     and MOZO_OPENING_ASSET.stat().st_size > 64
     and MOZO_OPENING_ASSET.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
 )
+OPENING_STYLE = story.get("opening", {}).get("thumbnail_style", "B")
+if OPENING_STYLE not in {"A", "B", "C"}:
+    raise SystemExit("opening.thumbnail_style must be A, B or C")
+OPENING_END = min(3.0, float(story["script"][0]["end"]))
 
 
 def stamp(seconds):
@@ -58,6 +62,42 @@ def vector(start, end, path, color, override="", layer=0):
 
 def rect_path(x, y, width, height):
     return f"m {x} {y} l {x + width} {y} {x + width} {y + height} {x} {y + height}"
+
+
+def add_body_page(events, cue, start, end, *, fade=True):
+    if end <= start:
+        return
+    fade_tag = r"\fad(100,100)" if fade else ""
+    events.append(dialogue(start, end, "Eyebrow", cue["label"], fade_tag, 4))
+    events.append(vector(start, end, rect_path(42, 1110, 996, 620), "101528", rf"\alpha&H12&{fade_tag}", 4))
+    events.append(dialogue(start, end, "SectionHeadline", cue["caption"], rf"\pos(90,1170){fade_tag}", 6))
+    events.append(dialogue(start, end, "Support", cue["support_text"], rf"\pos(90,1360){fade_tag}", 6))
+    events.append(dialogue(start, end, "Subtitle", cue["subtitle"], rf"\pos(90,1480){fade_tag}", 7))
+
+
+def add_opening(events, cue):
+    """Add only headline + one visual + tiny brand for the first 3 seconds."""
+    start, end = 0.0, OPENING_END
+    if OPENING_STYLE == "A":
+        events.append(vector(start, end, rect_path(36, 118, 1008, 660), "08111F", r"\alpha&H10&", 3))
+        events.append(vector(start, end, rect_path(62, 170, 18, 455), "00A5FF", layer=4))
+        events.append(vector(start, end, rect_path(82, 665, 900, 10), "00A5FF", layer=4))
+        events.append(dialogue(start, end, "Eyebrow", "AI NEWS", r"\pos(92,155)\1c&H00A5FF&", 5))
+        events.append(dialogue(start, end, "OpeningHeadline", cue["caption"], r"\pos(110,235)\fs108\bord9\3c&H08111F&", 7))
+        events.append(dialogue(start, end, "OpeningBrand", "AIツールウォッチ", r"\pos(92,1515)", 8))
+    elif OPENING_STYLE == "C":
+        events.append(vector(start, end, rect_path(48, 175, 984, 590), "101528", r"\alpha&H18&", 3))
+        events.append(vector(start, end, rect_path(88, 205, 185, 8), "C87CFF", layer=4))
+        events.append(dialogue(start, end, "Eyebrow", "AI NEWS", r"\pos(90,150)\1c&HC87CFF&", 5))
+        events.append(dialogue(start, end, "OpeningHeadline", cue["caption"], r"\pos(90,265)\fs120\bord7\3c&H101528&", 7))
+        events.append(dialogue(start, end, "OpeningBrand", "AIツールウォッチ", r"\pos(90,1515)", 8))
+    else:
+        events.append(vector(start, end, rect_path(40, 120, 1000, 620), "101528", r"\alpha&H24&", 3))
+        events.append(vector(start, end, rect_path(78, 188, 250, 8), "00A5FF", layer=4))
+        events.append(vector(start, end, rect_path(338, 188, 112, 8), "C87CFF", layer=4))
+        events.append(dialogue(start, end, "Eyebrow", "AI NEWS", r"\pos(86,145)", 5))
+        events.append(dialogue(start, end, "OpeningHeadline", cue["caption"], r"\pos(88,255)\fs106\bord8\3c&H101528&", 7))
+        events.append(dialogue(start, end, "OpeningBrand", "AIツールウォッチ", r"\pos(88,1515)", 8))
 
 
 output.parent.mkdir(parents=True, exist_ok=True)
@@ -115,14 +155,13 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-Style: Eyebrow,Noto Sans CJK JP,40,&H00FFF1C7,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,4,0,1,0,0,8,70,70,105,1
-Style: OpeningHeadline,Noto Sans CJK JP,96,&H00FFFFFF,&H00FFFFFF,&H00009BFF,&H00101528,-1,0,0,0,100,100,0,0,1,8,3,7,90,90,210,1
-Style: OpeningSupport,Noto Sans CJK JP,56,&H00151B2B,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,5,90,90,0,1
+Style: Eyebrow,Noto Sans CJK JP,40,&H00FFF1C7,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,4,0,1,0,0,7,70,70,105,1
+Style: OpeningHeadline,Noto Sans CJK JP,106,&H00FFFFFF,&H00FFFFFF,&H00009BFF,&H00101528,-1,0,0,0,100,100,0,0,1,8,3,7,90,90,210,1
+Style: OpeningBrand,Noto Sans CJK JP,34,&H00FFFFFF,&H00FFFFFF,&H00101528,&H00101528,-1,0,0,0,100,100,2,0,1,3,0,7,70,70,0,1
+Style: OpeningSubtitle,Noto Sans CJK JP,46,&H00FFFFFF,&H00FFFFFF,&H00101528,&H00101528,-1,0,0,0,100,100,0,0,3,2,0,7,30,30,0,1
 Style: SectionHeadline,Noto Sans CJK JP,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,7,90,90,0,1
 Style: Support,Noto Sans CJK JP,48,&H00FFF1C7,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,7,90,90,0,1
 Style: Subtitle,Noto Sans CJK JP,52,&H00FFFFFF,&H00FFFFFF,&H00101528,&H00101528,-1,0,0,0,100,100,0,0,3,2,0,7,90,90,0,1
-Style: OpeningSubtitle,Noto Sans CJK JP,46,&H00FFFFFF,&H00FFFFFF,&H00101528,&H00101528,-1,0,0,0,100,100,0,0,3,2,0,7,30,30,0,1
-Style: Bubble,Noto Sans CJK JP,44,&H00151B2B,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,5,20,20,20,1
 Style: Outro,Noto Sans CJK JP,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,2,0,1,0,0,5,60,60,60,1
 Style: Shape,Arial,20,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
 
@@ -139,24 +178,10 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         events.append(vector(start, end, rect_path(72, 1760, progress, 8), "58D6FF", layer=2))
 
         if index == 0:
-            # The opening headline is deliberately narrower and 2-line wrapped upstream.
-            events.append(vector(start, end, rect_path(42, 140, 996, 520), "101528", r"\alpha&H20&", 3))
-            events.append(vector(start, end, rect_path(70, 190, 16, 350), "00A5FF", layer=4))
-            events.append(dialogue(start, end, "Eyebrow", cue["label"], layer=5))
-            events.append(dialogue(start, end, "OpeningHeadline", cue["caption"], r"\pos(112,225)", 6))
-            events.append(vector(start, end, rect_path(82, 710, 916, 430), "F3EFE8", r"\alpha&H06&", 4))
-            events.append(dialogue(start, end, "OpeningSupport", cue["support_text"], r"\pos(540,925)", 6))
-            events.append(vector(start, end, "m 405 1325 b 405 1285 445 1265 500 1273 l 885 1273 b 940 1277 965 1310 958 1355 l 950 1405 b 940 1450 900 1470 845 1463 l 530 1463 b 475 1465 430 1440 425 1400 l 370 1445 395 1380 b 390 1360 395 1340 405 1325", "FFF4D6", layer=6))
-            events.append(dialogue(start, end, "Bubble", cue.get("mozo_line", "ここがポイント"), r"\pos(680,1368)", 7))
-            # Wider/taller subtitle box; no more tiny 31px explanatory copy.
-            events.append(vector(start, end, rect_path(300, 1500, 720, 230), "101528", r"\alpha&H10&", 6))
-            events.append(dialogue(start, end, "OpeningSubtitle", cue["subtitle"], r"\pos(330,1530)", 8))
+            add_opening(events, cue)
+            add_body_page(events, cue, OPENING_END, end, fade=False)
         elif index < len(page_cues):
-            events.append(dialogue(start, end, "Eyebrow", cue["label"], r"\fad(100,100)", 4))
-            events.append(vector(start, end, rect_path(42, 1110, 996, 620), "101528", r"\alpha&H12&\fad(100,100)", 4))
-            events.append(dialogue(start, end, "SectionHeadline", cue["caption"], r"\pos(90,1170)\fad(100,100)", 6))
-            events.append(dialogue(start, end, "Support", cue["support_text"], r"\pos(90,1360)\fad(100,100)", 6))
-            events.append(dialogue(start, end, "Subtitle", cue["subtitle"], r"\pos(90,1480)\fad(100,100)", 7))
+            add_body_page(events, cue, start, end)
         else:
             events.append(vector(start, end, rect_path(190, 760, 700, 8), "58D6FF", r"\fad(100,120)", 2))
             events.append(dialogue(start, end, "Outro", "今日のAIニュース", r"\pos(540,880)\fs58\fad(100,120)", 3))
@@ -193,8 +218,8 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             filters.append(f"{current}[{scaled}]overlay=enable='between(t,{cue['start']},{cue['end']})'[{out}];")
             current = f"[{out}]"
     if USE_MOZO_OPENING_ASSET:
-        filters.append(f"[{mozo_index}:v]scale=340:-1[mozo];")
-        filters.append(f"{current}[mozo]overlay=45:1320:enable='between(t,0,{page_cues[0]['end']})'[withmozo];")
+        filters.append(f"[{mozo_index}:v]scale=190:-1[mozo];")
+        filters.append(f"{current}[mozo]overlay=72:1480:enable='between(t,0,{page_cues[0]['end']})'[withmozo];")
         current = "[withmozo]"
     filters.append(f"{current}subtitles={ass}[video]")
 
@@ -215,15 +240,20 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         temporary_output.unlink(missing_ok=True)
 
 manifest = {
-    "renderer": "adaptive-explainer-v1",
+    "renderer": "adaptive-explainer-v2-thumbnail-abc",
     "content_hash": story.get("content_hash"),
     "page_count": len(story.get("script", [])) - 1,
     "duration_seconds": DURATION,
     "full_narration_subtitles": True,
     "subtitle_font_size_px": 52,
     "opening_subtitle_font_size_px": 46,
-    "opening_headline_font_size_px": 96,
+    "opening_headline_font_size_px": {"A": 108, "B": 106, "C": 120}[OPENING_STYLE],
     "opening_headline_target_chars_per_line": 9,
+    "opening_thumbnail_style": OPENING_STYLE,
+    "opening_support_copy_visible": False,
+    "opening_subtitle_visible": False,
+    "opening_single_dominant_visual": True,
+    "opening_thumbnail_window_seconds": OPENING_END,
     "used_generated_images": USE_STORY_IMAGES,
     "used_mozo_opening_asset": USE_MOZO_OPENING_ASSET,
     "mozo_opening_asset": str(MOZO_OPENING_ASSET) if USE_MOZO_OPENING_ASSET else None,
