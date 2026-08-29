@@ -41,6 +41,7 @@ if OPENING_STYLE not in {"A", "B", "C"}:
     raise SystemExit("opening.thumbnail_style must be A, B or C")
 OPENING_END = min(3.0, float(story["script"][0]["end"]))
 OPENING_LAYOUT_CONTRACT = "split-text-visual-v1"
+BODY_LAYOUT_CONTRACT = "split-text-visual-v1"
 
 
 def stamp(seconds):
@@ -66,11 +67,12 @@ def rect_path(x, y, width, height):
 
 
 def add_body_page(events, cue, start, end, *, fade=True):
+    """Use the generated scene's reserved lower negative space instead of masking the artwork."""
     if end <= start:
         return
     fade_tag = r"\fad(100,100)" if fade else ""
-    events.append(dialogue(start, end, "Eyebrow", cue["label"], fade_tag, 4))
-    events.append(vector(start, end, rect_path(42, 1110, 996, 620), "101528", rf"\alpha&H12&{fade_tag}", 4))
+    events.append(vector(start, end, rect_path(90, 1088, 180, 8), "58D6FF", fade_tag, 4))
+    events.append(dialogue(start, end, "Eyebrow", cue["label"], rf"\pos(90,1105){fade_tag}", 5))
     events.append(dialogue(start, end, "SectionHeadline", cue["caption"], rf"\pos(90,1170){fade_tag}", 6))
     events.append(dialogue(start, end, "Support", cue["support_text"], rf"\pos(90,1360){fade_tag}", 6))
     events.append(dialogue(start, end, "Subtitle", cue["subtitle"], rf"\pos(90,1480){fade_tag}", 7))
@@ -257,6 +259,11 @@ manifest = {
     "opening_dominant_visual_area_ratio": {"top": 0.42, "bottom": 0.82},
     "opening_large_overlay_panel": False,
     "opening_generated_image_full_frame": True,
+    "body_layout_contract": BODY_LAYOUT_CONTRACT,
+    "body_text_safe_area_ratio": {"top": 0.58, "bottom": 0.91},
+    "body_dominant_visual_area_ratio": {"top": 0.08, "bottom": 0.54},
+    "body_large_overlay_panel": False,
+    "body_generated_image_full_frame": True,
     "used_generated_images": USE_STORY_IMAGES,
     "used_mozo_opening_asset": USE_MOZO_OPENING_ASSET,
     "mozo_opening_asset": str(MOZO_OPENING_ASSET) if USE_MOZO_OPENING_ASSET else None,
