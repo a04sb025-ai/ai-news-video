@@ -4,6 +4,16 @@ import sys
 from pathlib import Path
 import write_automation_result as base
 
+THUMBNAIL_STYLE_CONTRACT = "A-breaking-B-magazine-C-declarative"
+LEGACY_ADAPTIVE_RENDERER = "adaptive-explainer-v1"
+THUMBNAIL_ADAPTIVE_RENDERER = "adaptive-explainer-v2-thumbnail-abc"
+
+
+def expected_adaptive_renderer(story):
+    """Keep legacy evidence strict while accepting v2 only for the explicit thumbnail contract."""
+    contract = story.get("opening", {}).get("thumbnail_style_contract")
+    return THUMBNAIL_ADAPTIVE_RENDERER if contract == THUMBNAIL_STYLE_CONTRACT else LEGACY_ADAPTIVE_RENDERER
+
 
 def main():
     story_path, video, reports, output = map(Path, sys.argv[1:5])
@@ -13,7 +23,7 @@ def main():
     render = base.read_json(video.with_suffix(".render.json"))
     adaptive_ok = bool(
         story.get("explanation_contract") == "adaptive-pages-v1"
-        and render.get("renderer") == "adaptive-explainer-v1"
+        and render.get("renderer") == expected_adaptive_renderer(story)
         and render.get("full_narration_subtitles") is True
         and int(render.get("subtitle_font_size_px", 0)) >= 48
         and int(render.get("opening_headline_target_chars_per_line", 99)) <= 10
@@ -30,6 +40,7 @@ def main():
         "reason": "adaptive readability evidence confirmed" if adaptive_ok else "adaptive readability evidence missing",
         "details": {
             "renderer": render.get("renderer"),
+            "expected_renderer": expected_adaptive_renderer(story),
             "subtitle_font_size_px": render.get("subtitle_font_size_px"),
             "opening_headline_target_chars_per_line": render.get("opening_headline_target_chars_per_line"),
         },

@@ -15,6 +15,7 @@ ALLOWED_ROLES = {
     "hook", "context", "definition", "landscape", "position", "fact",
     "reason", "issue", "impact", "caveat", "conclusion",
 }
+THUMBNAIL_STYLES = {"A", "B", "C"}
 ROLE_LABELS = {
     "hook": "AI NEWS",
     "context": "まず全体像",
@@ -28,7 +29,7 @@ ROLE_LABELS = {
     "caveat": "注意点",
     "conclusion": "つまり",
 }
-VISUAL_STANDARD = "ai-news-visual-v1"
+VISUAL_STANDARD = "ai-news-visual-v2-thumbnail-abc"
 EXPLANATION_CONTRACT = "adaptive-pages-v1"
 MOZO_DESIGN_REFERENCE = "assets/visual-references/mozo/mozo-character-reference.png"
 MOZO_OPENING_ASSET = "assets/visual-references/mozo/mozo-opening.png"
@@ -93,7 +94,7 @@ def _split_lines(text, limit, max_lines):
 
 
 def opening_caption(text):
-    """Keep the opening headline physically safe at roughly 96px Japanese glyphs."""
+    """Keep the opening headline physically safe at large Japanese display sizes."""
     return _split_lines(text, limit=9, max_lines=2)
 
 
@@ -126,6 +127,9 @@ def validate(payload):
     for field, maximum in (("headline", 80), ("hook", 120), ("summary", 240)):
         if not _valid_text(payload.get(field), maximum):
             errors.append(f"{field} is required and must be at most {maximum} characters")
+    thumbnail_style = payload.get("thumbnail_style", "B")
+    if thumbnail_style not in THUMBNAIL_STYLES:
+        errors.append("thumbnail_style must be A, B or C")
     points = payload.get("points")
     if not isinstance(points, list) or not 2 <= len(points) <= 5:
         errors.append("points must contain 2-5 items")
@@ -166,10 +170,12 @@ def validate(payload):
                     errors.append(f"{prefix} narration has {spoken} spoken characters; maximum {RICH_SPOKEN_CHARACTER_BUDGET}")
     if errors:
         raise ValueError("; ".join(errors))
+    payload["thumbnail_style"] = thumbnail_style
     return payload
 
 
 def select_template(payload):
+    """Select the body explainer template. This is separate from opening thumbnail_style A/B/C."""
     text = " ".join(
         [str(payload.get("headline", "")), str(payload.get("summary", "")), *[p.get("headline", "") for p in payload["pages"]]]
     )
@@ -185,6 +191,7 @@ def build_story(payload):
     terms = payload.get("narration_terms", {})
     digest = content_hash(payload)
     template = select_template(payload)
+    thumbnail_style = payload.get("thumbnail_style", "B")
     script = []
     cursor = 0.0
     for index, page in enumerate(pages):
@@ -220,6 +227,17 @@ def build_story(payload):
     })
     image_count = min(IMAGE_BUDGET, len(pages))
     image_assets = [f"scene-{i}.png" for i in range(1, image_count + 1)]
+    image_scenes = []
+    for index, page in enumerate(pages[:image_count]):
+        scene = {
+            "role": page["page_role"],
+            "verified_content": f"{page['headline']} / {page['support_text']} / {page['narration']}",
+            "visual_intent": page["visual_intent"],
+            "key_visuals": page["key_visuals"],
+        }
+        if index == 0:
+            scene["thumbnail_style"] = thumbnail_style
+        image_scenes.append(scene)
     story = {
         "request_id": payload["request_id"],
         "content_hash": digest,
@@ -236,6 +254,11 @@ def build_story(payload):
             "start": 0.0,
             "end": 3.0,
             "major_elements_static": True,
+            "thumbnail_style": thumbnail_style,
+            "thumbnail_style_contract": "A-breaking-B-magazine-C-declarative",
+            "single_dominant_visual": True,
+            "support_copy_visible": False,
+            "subtitle_visible": False,
             "character": "mozo",
             "character_reference": MOZO_DESIGN_REFERENCE,
             "character_asset": MOZO_OPENING_ASSET,
@@ -254,15 +277,7 @@ def build_story(payload):
             {"start": cue["start"], "end": cue["end"], "visual": cue.get("visual_intent", "")}
             for cue in script[:-1]
         ] + [{"start": outro_start, "end": script[-1]["end"], "visual": "控えめなアウトロ"}],
-        "image_scenes": [
-            {
-                "role": page["page_role"],
-                "verified_content": f"{page['headline']} / {page['support_text']} / {page['narration']}",
-                "visual_intent": page["visual_intent"],
-                "key_visuals": page["key_visuals"],
-            }
-            for page in pages[:image_count]
-        ],
+        "image_scenes": image_scenes,
     }
     return story
 

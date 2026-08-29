@@ -16,6 +16,9 @@ OPENING_REGIONS = {
     "mozo": (75, 1360, 450, 1785),
     "bubble": (390, 1370, 950, 1550),
 }
+THUMBNAIL_STYLE_CONTRACT = "A-breaking-B-magazine-C-declarative"
+LEGACY_VISUAL_STANDARD = "ai-news-visual-v1"
+THUMBNAIL_VISUAL_STANDARD = "ai-news-visual-v2-thumbnail-abc"
 
 
 def opening_sample_seconds(opening_duration, fps):
@@ -36,6 +39,12 @@ def timestamp_label(seconds):
 def normalize_layout_text(text):
     """Ignore layout-only whitespace while preserving all semantic characters."""
     return "".join(str(text).split())
+
+
+def expected_visual_standard(story):
+    """Require v2 only when the story explicitly opts into the A/B/C thumbnail contract."""
+    contract = story.get("opening", {}).get("thumbnail_style_contract")
+    return THUMBNAIL_VISUAL_STANDARD if contract == THUMBNAIL_STYLE_CONTRACT else LEGACY_VISUAL_STANDARD
 
 
 def region_metrics(rgb, width, height, region):
@@ -85,7 +94,7 @@ if "content_hash" in story:
     except OSError:
         opening_asset_digest, opening_asset_is_png = "", False
     checks.update({
-        "visual_standard_is_current": story.get("visual_standard") == "ai-news-visual-v1",
+        "visual_standard_is_current": story.get("visual_standard") == expected_visual_standard(story),
         "template_is_supported": story.get("visual_template", {}).get("id") in {"A", "B", "C"},
         "mozo_is_standard_character": story.get("opening", {}).get("character") == "mozo",
         "major_elements_static_for_full_opening": story.get("opening", {}).get("major_elements_static") is True,

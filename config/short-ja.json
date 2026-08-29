@@ -23,7 +23,21 @@
       "end": 3
     },
     "thumbnail_grade_required": true,
-    "goal": "冒頭3秒だけを静止画として見ても、ニュースの要点とインパクトが伝わること",
+    "goal": "冒頭3秒だけを静止画として見ても、ニュースの要点と見たくなる理由が一瞬で伝わること",
+    "thumbnail_styles": {
+      "A": {
+        "name": "号外・新聞見出し風",
+        "use_for": ["risk", "regulation", "security", "outage", "controversy", "urgent_problem"]
+      },
+      "B": {
+        "name": "雑誌表紙・編集特集風",
+        "use_for": ["trend", "industry_shift", "why_it_matters", "agent", "model_positioning", "market_change"]
+      },
+      "C": {
+        "name": "シンプル断言ポスター風",
+        "use_for": ["feature", "performance", "memory", "context", "speed", "voice", "ui", "clear_user_benefit"]
+      }
+    },
     "requirements": {
       "understandable_without_audio": true,
       "topic_clear_at_a_glance": true,
@@ -31,17 +45,27 @@
       "phone_readable_while_scrolling": true,
       "one_screen_one_message": true,
       "large_headline": true,
+      "headline_max_lines": 2,
+      "headline_target_chars_per_line": 9,
       "high_contrast": true,
+      "single_dominant_visual": true,
       "prefer_clear_subject_image": true,
+      "support_copy_visible_during_thumbnail_window": false,
+      "subtitle_visible_during_thumbnail_window": false,
       "prefer_hook_elements": [
-        "number",
         "conclusion",
+        "surprise",
+        "tension",
+        "clear_benefit",
         "question"
       ]
     },
     "avoid": [
       "small_body_copy",
       "multiple_competing_messages",
+      "generic_ai_icon_collage",
+      "robot_chip_shield_flowchart_cliche",
+      "abstract_term_only_headline",
       "slow_context_before_the_point",
       "audio_dependent_hook",
       "sensational_claims_not_supported_by_sources"
@@ -68,7 +92,10 @@
       "topic_clarity",
       "core_point_clarity",
       "visual_impact",
-      "works_without_audio"
+      "works_without_audio",
+      "thumbnail_style_fit",
+      "single_dominant_visual",
+      "no_tiny_explanatory_copy"
     ],
     "auto_fix_and_rerender_on_failure": true
   },

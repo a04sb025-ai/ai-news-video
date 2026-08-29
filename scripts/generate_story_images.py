@@ -13,6 +13,7 @@ COMMON = (
     "Deep navy and black field, restrained amber, violet and lavender accents, subtle paper grain, soft light, "
     "sparse circuits or thin geometry only as quiet background texture; leave mobile copy space. "
     "The scene must explain one concrete relationship using recognizable actors or objects named in the verified content. "
+    "Use one dominant subject or scene; do not assemble a collage of small symbols. "
     "Do not use meaningless empty boxes, generic arrows, anonymous process diagrams, or vague technology symbolism as the main idea. "
     "If the story is about a dispute, impact, mechanism, or decision, show the actual subject and object relationship visually. "
     "Original composition; do not imitate any YouTube Short, creator, publication, website, or branded UI. "
@@ -21,6 +22,22 @@ COMMON = (
     "Do not draw Mozo or any substitute mascot; the renderer adds the canonical character. "
     "No words, letters, numbers, logos, watermark, or readable fake UI. Show the news meaning, not AI as a symbol. "
 )
+THUMBNAIL_STYLE = {
+    "A": (
+        "Opening thumbnail mode A (breaking-headline mood): create one concrete high-tension news scene that communicates risk, "
+        "conflict, regulation, security, outage, or another verified problem immediately. Use composition and subject interaction for urgency, "
+        "not warning-icon collages, fake sirens, sensational disaster imagery, or unsupported danger. Reserve clean dark space in the upper half for a huge two-line headline. "
+    ),
+    "B": (
+        "Opening thumbnail mode B (editorial magazine-cover mood): make one strong editorial hero scene around the central trend, industry shift, "
+        "new concept, or why-this-matters angle. Prioritize an identifiable subject and a sophisticated magazine-cover composition, not an infographic. "
+        "Reserve clean dark space in the upper half for a huge two-line headline. "
+    ),
+    "C": (
+        "Opening thumbnail mode C (simple declarative poster mood): show one immediately recognizable object, action, or before/after idea that makes the user-facing change obvious. "
+        "Keep the composition minimal with generous negative space and no secondary decorative objects. Reserve clean dark space in the upper half for the largest headline treatment. "
+    ),
+}
 TEEN = {
     "scene-teen-hero.png": "A Japanese teenager discovers a useful new experience; chest-up hero and clear curiosity.",
     "scene-teen-thinking.png": "The same teenager thinks over a notebook while a device offers an abstract unlettered hint.",
@@ -37,8 +54,10 @@ def story_prompts(path):
         intent = scene.get("visual_intent", "")
         visual_type = scene.get("visual_type", "editorial")
         visuals = ", ".join(scene.get("key_visuals", []))
+        thumbnail_style = scene.get("thumbnail_style")
         prompts[name] = (
             COMMON
+            + (THUMBNAIL_STYLE.get(thumbnail_style, "") if thumbnail_style else "")
             + f" Scene role: {scene['role']}."
             + f" Visual explanation type: {visual_type}."
             + (f" Visual intent: {intent}." if intent else "")
@@ -84,14 +103,12 @@ def main():
     else:
         output = ROOT / CONFIG["output_directory"] / CONFIG["prompt_version"]
         prompts = {name: COMMON + detail for name, detail in TEEN.items()}
-    # Preserve the legacy four-image branch for existing contract tests while allowing
-    # adaptive explainers to continue through the new ten-scene ceiling.
     if len(prompts) > 4:
         if len(prompts) > MAX_IMAGES:
             raise SystemExit(f"image budget exceeded: maximum is {MAX_IMAGES}")
     output.mkdir(parents=True, exist_ok=True)
     log = {
-        "prompt_version": "daily-editorial-v2-all-scenes" if len(sys.argv) == 2 else CONFIG["prompt_version"],
+        "prompt_version": "daily-editorial-v3-thumbnail-abc" if len(sys.argv) == 2 else CONFIG["prompt_version"],
         "content_hash": json.loads(Path(sys.argv[1]).read_text()).get("content_hash") if len(sys.argv) == 2 else None,
         "maximum": MAX_IMAGES,
         "expected_images": list(prompts),
