@@ -1,0 +1,96 @@
+name: AB test image models
+run-name: Image model AB test / ${{ inputs.request_id || 'story request' }}
+
+"on":
+  workflow_dispatch:
+    inputs:
+      story_json_path:
+        description: Repository-relative prepared story.json path (takes priority)
+        required: false
+        type: string
+      payload_json_path:
+        description: Repository-relative verified payload JSON path (used when story path is empty)
+        required: false
+        type: string
+      request_id:
+        description: Optional safe output identifier (otherwise read from JSON)
+        required: false
+        type: string
+      models:
+        description: Comma-separated image models
+        required: true
+        default: gpt-image-1,gpt-image-2
+        type: string
+      size:
+        description: Image size
+        required: true
+        default: 1024x1536
+        type: string
+      quality:
+        description: Image quality
+        required: true
+        default: high
+        type: string
+
+permissions: {contents: read}
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install preview dependency
+        run: python -m pip install --disable-pip-version-check Pillow
+      - name: Validate repository-relative input
+        env:
+          STORY_PATH: ${{ inputs.story_json_path }}
+          PAYLOAD_PATH: ${{ inputs.payload_json_path }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          value = os.environ['STORY_PATH'] or os.environ['PAYLOAD_PATH']
+          if not value:
+              raise SystemExit('Set story_json_path or payload_json_path')
+          path = Path(value)
+          if path.is_absolute() or '..' in path.parts or not path.is_file():
+              raise SystemExit('Input must be an existing repository-relative JSON file')
+          PY
+      - name: Generate one key visual per model
+        id: generate
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          STORY_PATH: ${{ inputs.story_json_path }}
+          PAYLOAD_PATH: ${{ inputs.payload_json_path }}
+          REQUEST_ID: ${{ inputs.request_id }}
+          MODELS: ${{ inputs.models }}
+          SIZE: ${{ inputs.size }}
+          QUALITY: ${{ inputs.quality }}
+        run: |
+          args=(--models "$MODELS" --size "$SIZE" --quality "$QUALITY")
+          if [[ -n "$STORY_PATH" ]]; then args+=(--story-json "$STORY_PATH"); else args+=(--payload-json "$PAYLOAD_PATH"); fi
+          if [[ -n "$REQUEST_ID" ]]; then args+=(--request-id "$REQUEST_ID"); fi
+          python3 scripts/ab_test_image_models.py "${args[@]}"
+      - name: Upload comparison images, previews, log, and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-model-ab-test-${{ inputs.request_id || github.run_number }}
+          if-no-files-found: error
+          retention-days: 30
+          path: assets/generated/ab-tests/**
+      - name: Require a comparable result
+        if: always()
+        env:
+          GENERATION_OUTCOME: ${{ steps.generate.outcome }}
+        run: |
+          if [[ "$GENERATION_OUTCOME" != success ]]; then
+            echo "COMPARISON INCOMPLETE: inspect comparison-log.json and comparison-report.md in the artifact for per-model errors." >&2
+            exit 1
+          fi
+          echo "COMPARISON COMPLETE: every requested model generated one image under identical conditions."
