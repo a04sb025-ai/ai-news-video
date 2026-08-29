@@ -11,7 +11,7 @@ class ThumbnailSplitLayoutTest(unittest.TestCase):
         self.assertIn("fully below 42 percent", source)
         self.assertIn("lower-left corner relatively quiet", source)
         self.assertIn("do not paint a title card, dark text panel, banner, box", source)
-        self.assertIn("daily-editorial-v4-split-text-visual", source)
+        self.assertIn("daily-editorial-v5-all-scenes-split-text-visual", source)
 
     def test_renderer_does_not_cover_opening_with_large_dark_panels(self):
         renderer = (ROOT / "scripts/render_adaptive_explainer.py").read_text()

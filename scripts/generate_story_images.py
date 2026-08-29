@@ -30,6 +30,15 @@ OPENING_LAYOUT = (
     "The renderer places typography directly on the negative space, so do not paint a title card, dark text panel, banner, box, fake headline area, or other shape intended to sit "
     "behind text. The result must remain one continuous full-frame editorial illustration rather than two separate boxes. "
 )
+BODY_LAYOUT = (
+    "Body-page split-layout rule: keep the entire lower 42 percent of the canvas as deliberate text-safe negative space, "
+    "using only a calm low-detail continuation of the same background. Do not place any face, person, machine, building, chart, "
+    "focal object, bright highlight, or essential visual evidence in that lower zone. Place the dominant news subject and all important visual evidence "
+    "in the upper portion, concentrated roughly between 8 and 54 percent of the canvas height. "
+    "The renderer places the section label, headline, support copy, and subtitles directly in the reserved lower space, so do not paint a text panel, "
+    "caption card, banner, box, fake UI, or other shape behind text. Keep the result as one continuous full-frame editorial illustration. "
+    "Preserve one-page-one-message: one dominant visual relationship, no collage of unrelated secondary symbols. "
+)
 THUMBNAIL_STYLE = {
     "A": (
         "Opening thumbnail mode A (breaking-headline mood): create one concrete high-tension news scene that communicates risk, "
@@ -64,7 +73,7 @@ def story_prompts(path):
         thumbnail_style = scene.get("thumbnail_style")
         prompts[name] = (
             COMMON
-            + (OPENING_LAYOUT + THUMBNAIL_STYLE.get(thumbnail_style, "") if thumbnail_style else "")
+            + ((OPENING_LAYOUT + THUMBNAIL_STYLE.get(thumbnail_style, "")) if thumbnail_style else BODY_LAYOUT)
             + f" Scene role: {scene['role']}."
             + f" Visual explanation type: {visual_type}."
             + (f" Visual intent: {intent}." if intent else "")
@@ -115,7 +124,7 @@ def main():
             raise SystemExit(f"image budget exceeded: maximum is {MAX_IMAGES}")
     output.mkdir(parents=True, exist_ok=True)
     log = {
-        "prompt_version": "daily-editorial-v4-split-text-visual" if len(sys.argv) == 2 else CONFIG["prompt_version"],
+        "prompt_version": "daily-editorial-v5-all-scenes-split-text-visual" if len(sys.argv) == 2 else CONFIG["prompt_version"],
         "content_hash": json.loads(Path(sys.argv[1]).read_text()).get("content_hash") if len(sys.argv) == 2 else None,
         "maximum": MAX_IMAGES,
         "expected_images": list(prompts),
