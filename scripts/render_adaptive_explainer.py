@@ -78,6 +78,18 @@ def add_body_page(events, cue, start, end, *, fade=True):
     events.append(dialogue(start, end, "Subtitle", cue["subtitle"], rf"\pos(90,1480){fade_tag}", 7))
 
 
+def add_opening_body_page(events, cue, start, end):
+    """After the thumbnail window, keep copy inside the opening image's top text-safe zone."""
+    if end <= start:
+        return
+    fade_tag = r"\fad(100,100)"
+    events.append(vector(start, end, rect_path(90, 132, 180, 8), "58D6FF", fade_tag, 4))
+    events.append(dialogue(start, end, "Eyebrow", cue["label"], rf"\pos(90,150){fade_tag}", 5))
+    events.append(dialogue(start, end, "SectionHeadline", cue["caption"], rf"\pos(90,215)\fs64{fade_tag}", 6))
+    events.append(dialogue(start, end, "Support", cue["support_text"], rf"\pos(90,390)\fs40{fade_tag}", 6))
+    events.append(dialogue(start, end, "Subtitle", cue["subtitle"], rf"\pos(90,500)\fs44{fade_tag}", 7))
+
+
 def add_opening(events, cue):
     """Place typography in the generated image's reserved negative space without masking the artwork."""
     start, end = 0.0, OPENING_END
@@ -179,7 +191,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 
         if index == 0:
             add_opening(events, cue)
-            add_body_page(events, cue, OPENING_END, end, fade=False)
+            add_opening_body_page(events, cue, OPENING_END, end)
         elif index < len(page_cues):
             add_body_page(events, cue, start, end)
         else:

@@ -22,6 +22,8 @@ class AllSceneSplitLayoutTest(unittest.TestCase):
         self.assertIn('"body_large_overlay_panel": False', renderer)
         self.assertIn('"body_generated_image_full_frame": True', renderer)
         self.assertIn('"body_text_safe_area_ratio": {"top": 0.58, "bottom": 0.91}', renderer)
+        self.assertIn("def add_opening_body_page", renderer)
+        self.assertIn("add_opening_body_page(events, cue, OPENING_END, end)", renderer)
 
 
 if __name__ == "__main__":

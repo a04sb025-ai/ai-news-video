@@ -89,7 +89,7 @@ class ThumbnailOpeningModesTest(unittest.TestCase):
         self.assertIn('OPENING_STYLE = story.get("opening", {}).get("thumbnail_style", "B")', renderer)
         self.assertIn('"opening_support_copy_visible": False', renderer)
         self.assertIn('"opening_subtitle_visible": False', renderer)
-        self.assertIn('add_body_page(events, cue, OPENING_END, end, fade=False)', renderer)
+        self.assertIn('add_opening_body_page(events, cue, OPENING_END, end)', renderer)
 
     def test_opening_qa_requires_v2_only_for_explicit_thumbnail_contract(self):
         story = module.build_story(module.validate(payload("A")))
