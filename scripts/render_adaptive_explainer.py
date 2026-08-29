@@ -40,6 +40,7 @@ OPENING_STYLE = story.get("opening", {}).get("thumbnail_style", "B")
 if OPENING_STYLE not in {"A", "B", "C"}:
     raise SystemExit("opening.thumbnail_style must be A, B or C")
 OPENING_END = min(3.0, float(story["script"][0]["end"]))
+OPENING_LAYOUT_CONTRACT = "split-text-visual-v1"
 
 
 def stamp(seconds):
@@ -76,28 +77,25 @@ def add_body_page(events, cue, start, end, *, fade=True):
 
 
 def add_opening(events, cue):
-    """Add only headline + one visual + tiny brand for the first 3 seconds."""
+    """Place typography in the generated image's reserved negative space without masking the artwork."""
     start, end = 0.0, OPENING_END
     if OPENING_STYLE == "A":
-        events.append(vector(start, end, rect_path(36, 118, 1008, 660), "08111F", r"\alpha&H10&", 3))
         events.append(vector(start, end, rect_path(62, 170, 18, 455), "00A5FF", layer=4))
         events.append(vector(start, end, rect_path(82, 665, 900, 10), "00A5FF", layer=4))
         events.append(dialogue(start, end, "Eyebrow", "AI NEWS", r"\pos(92,155)\1c&H00A5FF&", 5))
-        events.append(dialogue(start, end, "OpeningHeadline", cue["caption"], r"\pos(110,235)\fs108\bord9\3c&H08111F&", 7))
-        events.append(dialogue(start, end, "OpeningBrand", "AIツールウォッチ", r"\pos(92,1515)", 8))
+        events.append(dialogue(start, end, "OpeningHeadline", cue["caption"], r"\pos(110,235)\fs108\bord10\3c&H08111F&", 7))
+        events.append(dialogue(start, end, "OpeningBrand", "AIツールウォッチ", r"\pos(92,620)", 8))
     elif OPENING_STYLE == "C":
-        events.append(vector(start, end, rect_path(48, 175, 984, 590), "101528", r"\alpha&H18&", 3))
         events.append(vector(start, end, rect_path(88, 205, 185, 8), "C87CFF", layer=4))
         events.append(dialogue(start, end, "Eyebrow", "AI NEWS", r"\pos(90,150)\1c&HC87CFF&", 5))
-        events.append(dialogue(start, end, "OpeningHeadline", cue["caption"], r"\pos(90,265)\fs120\bord7\3c&H101528&", 7))
-        events.append(dialogue(start, end, "OpeningBrand", "AIツールウォッチ", r"\pos(90,1515)", 8))
+        events.append(dialogue(start, end, "OpeningHeadline", cue["caption"], r"\pos(90,265)\fs120\bord9\3c&H101528&", 7))
+        events.append(dialogue(start, end, "OpeningBrand", "AIツールウォッチ", r"\pos(90,650)", 8))
     else:
-        events.append(vector(start, end, rect_path(40, 120, 1000, 620), "101528", r"\alpha&H24&", 3))
         events.append(vector(start, end, rect_path(78, 188, 250, 8), "00A5FF", layer=4))
         events.append(vector(start, end, rect_path(338, 188, 112, 8), "C87CFF", layer=4))
         events.append(dialogue(start, end, "Eyebrow", "AI NEWS", r"\pos(86,145)", 5))
-        events.append(dialogue(start, end, "OpeningHeadline", cue["caption"], r"\pos(88,255)\fs106\bord8\3c&H101528&", 7))
-        events.append(dialogue(start, end, "OpeningBrand", "AIツールウォッチ", r"\pos(88,1515)", 8))
+        events.append(dialogue(start, end, "OpeningHeadline", cue["caption"], r"\pos(88,255)\fs106\bord9\3c&H101528&", 7))
+        events.append(dialogue(start, end, "OpeningBrand", "AIツールウォッチ", r"\pos(88,630)", 8))
 
 
 output.parent.mkdir(parents=True, exist_ok=True)
@@ -254,6 +252,11 @@ manifest = {
     "opening_subtitle_visible": False,
     "opening_single_dominant_visual": True,
     "opening_thumbnail_window_seconds": OPENING_END,
+    "opening_layout_contract": OPENING_LAYOUT_CONTRACT,
+    "opening_text_safe_area_ratio": {"top": 0.0, "bottom": 0.40},
+    "opening_dominant_visual_area_ratio": {"top": 0.42, "bottom": 0.82},
+    "opening_large_overlay_panel": False,
+    "opening_generated_image_full_frame": True,
     "used_generated_images": USE_STORY_IMAGES,
     "used_mozo_opening_asset": USE_MOZO_OPENING_ASSET,
     "mozo_opening_asset": str(MOZO_OPENING_ASSET) if USE_MOZO_OPENING_ASSET else None,
