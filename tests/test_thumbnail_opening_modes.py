@@ -91,6 +91,22 @@ class ThumbnailOpeningModesTest(unittest.TestCase):
         self.assertIn('"opening_subtitle_visible": False', renderer)
         self.assertIn('add_opening_body_page(events, cue, OPENING_END, end)', renderer)
 
+    def test_renderer_writes_canonical_thumbnail_from_source_layers_not_finished_mp4(self):
+        renderer = (ROOT / "scripts/render_adaptive_explainer.py").read_text()
+        self.assertIn('thumbnail_output = output.with_name(f"{output.stem}.thumbnail.jpg")', renderer)
+        self.assertIn('def render_opening_thumbnail(ass, destination):', renderer)
+        self.assertIn('render_opening_thumbnail(ass, temporary_thumbnail)', renderer)
+        self.assertIn('STORY_IMAGES[0]', renderer)
+        self.assertIn('subtitles={ass}[thumbnail]', renderer)
+        self.assertIn('"opening_thumbnail_source": "renderer-composed-opening-v1"', renderer)
+        self.assertIn('"opening_thumbnail_direct_render": True', renderer)
+        self.assertNotIn('ffmpeg", "-ss", "0.5", "-i", str(output)', renderer)
+
+    def test_self_heal_removes_stale_thumbnail_before_rerender(self):
+        source = (ROOT / "scripts/self_heal_adaptive_daily_video.py").read_text()
+        self.assertIn('video.with_name(f"{video.stem}.thumbnail.jpg").unlink(missing_ok=True)', source)
+        self.assertIn('or not thumbnail.is_file()', source)
+
     def test_opening_qa_requires_v2_only_for_explicit_thumbnail_contract(self):
         story = module.build_story(module.validate(payload("A")))
         expected = opening_namespace["expected_visual_standard"]
