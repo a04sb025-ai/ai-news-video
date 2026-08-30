@@ -42,6 +42,7 @@ if OPENING_STYLE not in {"A", "B", "C"}:
 OPENING_END = min(3.0, float(story["script"][0]["end"]))
 OPENING_LAYOUT_CONTRACT = "split-text-visual-v1"
 BODY_LAYOUT_CONTRACT = "split-text-visual-v1"
+THUMBNAIL_RENDER_SECONDS = min(0.5, max(0.1, OPENING_END / 2))
 
 
 def stamp(seconds):
@@ -112,9 +113,65 @@ def add_opening(events, cue):
         events.append(dialogue(start, end, "OpeningBrand", "AIツールウォッチ", r"\pos(88,630)", 8))
 
 
+def render_opening_thumbnail(ass, destination):
+    """Compose the canonical thumbnail directly from source artwork and opening typography.
+
+    This deliberately does not sample the finished MP4, so video startup frames, fades,
+    codec timing, or player behavior cannot change the YouTube thumbnail.
+    """
+    command = [
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+        "-f", "lavfi", "-i", f"color=c=0x18213A:s={WIDTH}x{HEIGHT}:r={FPS}:d=1",
+    ]
+    input_index = 1
+    first_image_index = None
+    mozo_index = None
+    if USE_STORY_IMAGES:
+        first_image_index = input_index
+        command.extend(["-loop", "1", "-framerate", str(FPS), "-i", str(STORY_IMAGES[0])])
+        input_index += 1
+    if USE_MOZO_OPENING_ASSET:
+        mozo_index = input_index
+        command.extend(["-loop", "1", "-framerate", str(FPS), "-i", str(MOZO_OPENING_ASSET)])
+
+    filters = []
+    current = "[0:v]"
+    if first_image_index is not None:
+        filters.append(
+            f"[{first_image_index}:v]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,"
+            f"crop={WIDTH}:{HEIGHT},setsar=1[thumbscene];"
+        )
+        filters.append(f"{current}[thumbscene]overlay=0:0[thumbart];")
+        current = "[thumbart]"
+    if mozo_index is not None:
+        filters.append(f"[{mozo_index}:v]scale=190:-1[thumbmozo];")
+        filters.append(f"{current}[thumbmozo]overlay=72:1480[thumbwithmozo];")
+        current = "[thumbwithmozo]"
+    filters.append(f"{current}subtitles={ass}[thumbnail]")
+
+    command.extend([
+        "-filter_complex", "".join(filters),
+        "-map", "[thumbnail]",
+        "-ss", str(THUMBNAIL_RENDER_SECONDS),
+        "-frames:v", "1",
+        "-q:v", "2",
+        str(destination),
+    ])
+    subprocess.run(command, check=True)
+    if not destination.is_file() or destination.stat().st_size <= 0:
+        raise SystemExit("Opening thumbnail render did not produce an image")
+    subprocess.run([
+        "ffmpeg", "-hide_banner", "-v", "error", "-xerror", "-i", str(destination),
+        "-f", "null", "-",
+    ], check=True)
+
+
 output.parent.mkdir(parents=True, exist_ok=True)
 temporary_output = output.with_name(f".{output.stem}.rendering{output.suffix}")
+thumbnail_output = output.with_name(f"{output.stem}.thumbnail.jpg")
+temporary_thumbnail = output.with_name(f".{output.stem}.rendering-thumbnail.jpg")
 temporary_output.unlink(missing_ok=True)
+temporary_thumbnail.unlink(missing_ok=True)
 
 with tempfile.TemporaryDirectory() as directory:
     tmp = Path(directory)
@@ -200,6 +257,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             events.append(dialogue(start, end, "Outro", "AIツールウォッチ", r"\pos(540,1000)\fs50\1c&H58D6FF&\fad(100,120)", 3))
 
     ass.write_text(header + "\n".join(events) + "\n")
+    render_opening_thumbnail(ass, temporary_thumbnail)
 
     command = [
         "ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c=0x18213A:s={WIDTH}x{HEIGHT}:r={FPS}:d={DURATION}",
@@ -247,9 +305,11 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             "ffmpeg", "-hide_banner", "-v", "error", "-xerror", "-i", str(temporary_output),
             "-map", "0", "-f", "null", "-",
         ], check=True)
+        temporary_thumbnail.replace(thumbnail_output)
         temporary_output.replace(output)
     finally:
         temporary_output.unlink(missing_ok=True)
+        temporary_thumbnail.unlink(missing_ok=True)
 
 manifest = {
     "renderer": "adaptive-explainer-v2-thumbnail-abc",
@@ -271,6 +331,13 @@ manifest = {
     "opening_dominant_visual_area_ratio": {"top": 0.42, "bottom": 0.82},
     "opening_large_overlay_panel": False,
     "opening_generated_image_full_frame": True,
+    "opening_thumbnail_file": str(thumbnail_output),
+    "opening_thumbnail_source": "renderer-composed-opening-v1",
+    "opening_thumbnail_direct_render": True,
+    "opening_thumbnail_width": WIDTH,
+    "opening_thumbnail_height": HEIGHT,
+    "opening_thumbnail_render_seconds": THUMBNAIL_RENDER_SECONDS,
+    "opening_thumbnail_sha256": hashlib.sha256(thumbnail_output.read_bytes()).hexdigest(),
     "body_layout_contract": BODY_LAYOUT_CONTRACT,
     "body_text_safe_area_ratio": {"top": 0.58, "bottom": 0.91},
     "body_dominant_visual_area_ratio": {"top": 0.08, "bottom": 0.54},

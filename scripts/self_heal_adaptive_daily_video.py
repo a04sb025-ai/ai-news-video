@@ -114,14 +114,17 @@ def main() -> int:
 
         video.unlink(missing_ok=True)
         video.with_suffix(".render.json").unlink(missing_ok=True)
+        video.with_name(f"{video.stem}.thumbnail.jpg").unlink(missing_ok=True)
         render_status = base.run([sys.executable, RENDERER, str(story), str(video)], env=env,
                                  log=reports / f"self-heal-render-{repair}.txt")
-        if render_status != 0 or not video.is_file():
+        thumbnail = video.with_name(f"{video.stem}.thumbnail.jpg")
+        if render_status != 0 or not video.is_file() or not thumbnail.is_file():
             attempts.append({
                 "repair": repair,
                 "action": "rerender",
                 "renderer": RENDERER,
                 "rendered": False,
+                "thumbnail_rendered": thumbnail.is_file(),
                 "regenerated_images": regenerated,
                 "failed_checks": failed_checks(result),
                 "publish_blockers": publish_blockers(result),
@@ -136,6 +139,7 @@ def main() -> int:
             "action": "safe-rerender",
             "renderer": RENDERER,
             "rendered": True,
+            "thumbnail_rendered": True,
             "regenerated_images": regenerated,
             "compressed": compressed,
             "auto_publish_ready": ready,
