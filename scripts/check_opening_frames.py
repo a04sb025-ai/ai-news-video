@@ -9,12 +9,14 @@ from pathlib import Path
 
 FPS = 30
 QA_FRAME_SIZE = (270, 480)
+# Only regions that are required to be visibly populated belong in the hard gate.
+# The opening speech-bubble area is intentionally allowed to stay empty: the first
+# three seconds should work as a clean thumbnail, and optional body copy starts later.
 OPENING_REGIONS = {
     "headline": (90, 190, 990, 600),
     "panel": (42, 150, 1038, 660),
     "visual": (82, 700, 998, 1270),
     "mozo": (75, 1360, 450, 1785),
-    "bubble": (390, 1370, 950, 1550),
 }
 THUMBNAIL_STYLE_CONTRACT = "A-breaking-B-magazine-C-declarative"
 LEGACY_VISUAL_STANDARD = "ai-news-visual-v1"
