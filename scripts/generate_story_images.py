@@ -8,6 +8,7 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = json.loads((ROOT / "config/image-generation.json").read_text())
 MAX_IMAGES = 10
+VALID_QUALITIES = {"low", "medium", "high"}
 COMMON = (
     "Original vertical editorial scene for the AI Tool Watch series, grounded only in the verified news content. "
     "Deep navy and black field, restrained amber, violet and lavender accents, subtle paper grain, soft light, "
@@ -62,6 +63,19 @@ TEEN = {
 }
 
 
+def effective_quality():
+    override = os.environ.get("IMAGE_GENERATION_QUALITY")
+    if override:
+        quality = override.strip().lower()
+    else:
+        news_date = os.environ.get("NEWS_DATE", "").strip()
+        experiment_dates = CONFIG.get("experiments", {}).get("medium_quality_news_dates", [])
+        quality = "medium" if news_date and news_date in experiment_dates else CONFIG["quality"]
+    if quality not in VALID_QUALITIES:
+        raise ValueError(f"unsupported image quality: {quality}")
+    return quality
+
+
 def story_prompts(path):
     story = json.loads(path.read_text())
     scenes = story["image_scenes"]
@@ -83,7 +97,7 @@ def story_prompts(path):
     return ROOT / story["image_asset_dir"], prompts
 
 
-def generate(destination, prompt, api_key):
+def generate(destination, prompt, api_key, quality):
     if destination.is_file() and destination.stat().st_size > 0:
         print(f"reuse {destination.relative_to(ROOT)}")
         return "reused"
@@ -91,7 +105,7 @@ def generate(destination, prompt, api_key):
         "model": CONFIG["model"],
         "prompt": prompt,
         "size": CONFIG["size"],
-        "quality": CONFIG["quality"],
+        "quality": quality,
         "n": 1,
         "output_format": "png",
     }).encode()
@@ -109,7 +123,7 @@ def generate(destination, prompt, api_key):
     temporary = destination.with_suffix(".png.part")
     temporary.write_bytes(base64.b64decode(data, validate=True))
     temporary.replace(destination)
-    print(f"generated {destination.relative_to(ROOT)}")
+    print(f"generated {destination.relative_to(ROOT)} quality={quality}")
     return "generated"
 
 
@@ -123,10 +137,14 @@ def main():
         if len(prompts) > MAX_IMAGES:
             raise SystemExit(f"image budget exceeded: maximum is {MAX_IMAGES}")
     output.mkdir(parents=True, exist_ok=True)
+    quality = effective_quality()
     log = {
         "prompt_version": "daily-editorial-v5-all-scenes-split-text-visual" if len(sys.argv) == 2 else CONFIG["prompt_version"],
         "content_hash": json.loads(Path(sys.argv[1]).read_text()).get("content_hash") if len(sys.argv) == 2 else None,
         "maximum": MAX_IMAGES,
+        "configured_quality": CONFIG["quality"],
+        "effective_quality": quality,
+        "news_date": os.environ.get("NEWS_DATE"),
         "expected_images": list(prompts),
         "images": [],
     }
@@ -139,7 +157,7 @@ def main():
         return 2
     try:
         for name, prompt in prompts.items():
-            log["images"].append({"file": name, "result": generate(output / name, prompt, key)})
+            log["images"].append({"file": name, "result": generate(output / name, prompt, key, quality)})
         log["status"] = "complete"
     except (HTTPError, URLError, RuntimeError, ValueError, KeyError) as error:
         log["status"] = "fallback"
