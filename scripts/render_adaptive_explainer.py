@@ -177,42 +177,32 @@ with tempfile.TemporaryDirectory() as directory:
     tmp = Path(directory)
     wav = tmp / "voice.wav"
     ass = tmp / "adaptive-explainer.ass"
-    cue_wavs, cue_durations = [], []
 
-    for index, cue in enumerate(story["script"]):
-        narration = tmp / f"narration-{index}.txt"
-        raw_wav = tmp / f"voice-{index}-raw.wav"
-        fitted_wav = tmp / f"voice-{index}.wav"
-        narration.write_text(cue["narration"])
-        subprocess.run([
-            "open_jtalk", "-x", str(dictionary), "-m", str(voice), "-r", "1.06",
-            "-ow", str(raw_wav), str(narration),
-        ], check=True)
-        with wave.open(str(raw_wav)) as audio:
-            raw_duration = audio.getnframes() / audio.getframerate()
-        slot = float(cue["end"]) - float(cue["start"])
-        speed = max(1.0, raw_duration / max(slot - .28, .8))
-        if speed > 1.32:
-            raise SystemExit(
-                f"Narration for scene {index + 1} would require {speed:.2f}x speech; "
-                "increase scene duration or split the explanation instead of rushing it"
-            )
-        filters = [f"atempo={speed:.4f}", f"apad=pad_dur={slot}", f"atrim=duration={slot}"]
-        subprocess.run([
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw_wav),
-            "-af", ",".join(filters), str(fitted_wav),
-        ], check=True)
-        cue_wavs.append(fitted_wav)
-        cue_durations.append(slot)
-
-    audio_inputs = [value for cue_wav in cue_wavs for value in ("-i", str(cue_wav))]
-    audio_filter = "".join(
-        f"[{i}:a]apad,atrim=duration={duration}[a{i}];" for i, duration in enumerate(cue_durations)
-    )
-    audio_filter += "".join(f"[a{i}]" for i in range(len(cue_wavs))) + f"concat=n={len(cue_wavs)}:v=0:a=1[out]"
+    # Generate the whole narration in one Open JTalk invocation. Previously every scene was
+    # synthesized as an independent utterance and then concatenated. That repeatedly put the
+    # TTS engine into utterance-final prosody at each visual boundary, which can sound like the
+    # last syllables suddenly enter slow motion. A single continuous pass removes those artificial
+    # per-scene utterance endings while preserving the existing visual scene timing and publish gate.
+    narration = tmp / "narration.txt"
+    raw_wav = tmp / "voice-raw.wav"
+    narration.write_text("\n".join(cue["narration"].strip() for cue in story["script"]) + "\n")
     subprocess.run([
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *audio_inputs,
-        "-filter_complex", audio_filter, "-map", "[out]", str(wav),
+        "open_jtalk", "-x", str(dictionary), "-m", str(voice), "-r", "1.06",
+        "-ow", str(raw_wav), str(narration),
+    ], check=True)
+    with wave.open(str(raw_wav)) as audio:
+        raw_duration = audio.getnframes() / audio.getframerate()
+    target_audio_duration = max(DURATION - .28, .8)
+    narration_speed = max(1.0, raw_duration / target_audio_duration)
+    if narration_speed > 1.32:
+        raise SystemExit(
+            f"Full narration would require {narration_speed:.2f}x speech; "
+            "increase scene duration or split the explanation instead of rushing it"
+        )
+    subprocess.run([
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw_wav),
+        "-af", f"atempo={narration_speed:.4f},apad=pad_dur={DURATION},atrim=duration={DURATION}",
+        str(wav),
     ], check=True)
 
     header = f"""[Script Info]
@@ -316,6 +306,8 @@ manifest = {
     "content_hash": story.get("content_hash"),
     "page_count": len(story.get("script", [])) - 1,
     "duration_seconds": DURATION,
+    "audio_pipeline": "single-pass-open-jtalk-v1",
+    "audio_tempo": round(narration_speed, 4),
     "full_narration_subtitles": True,
     "subtitle_font_size_px": 52,
     "opening_subtitle_font_size_px": 46,
