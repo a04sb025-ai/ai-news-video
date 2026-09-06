@@ -2,6 +2,7 @@
 """Bounded recovery loop for adaptive daily AI-news explainers."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -65,6 +66,25 @@ def perform_qa(story: Path, video: Path, reports: Path) -> dict:
     return base.read_json(reports / "automation-result.json")
 
 
+def render_input_digest(story: Path) -> str | None:
+    """Compare the visual inputs; unavailable evidence must not suppress a retry."""
+    root = Path(__file__).resolve().parents[1]
+    try:
+        payload = json.loads(story.read_text())
+        image_dir = root / payload["image_asset_dir"]
+        paths = [story, *sorted((root / "scripts").glob("*.py"))]
+        paths.extend(image_dir / name for name in payload["image_assets"])
+        paths.append(root / payload["opening"]["character_asset"])
+        digest = hashlib.sha256()
+        for path in paths:
+            content = path.read_bytes()
+            digest.update(str(path.resolve()).encode() + b"\0")
+            digest.update(str(len(content)).encode() + b"\0" + content)
+        return digest.hexdigest()
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 def main() -> int:
     if len(sys.argv) != 4:
         raise SystemExit("usage: self_heal_adaptive_daily_video.py STORY_JSON VIDEO_MP4 REPORTS_DIR")
@@ -72,6 +92,7 @@ def main() -> int:
     reports.mkdir(parents=True, exist_ok=True)
     result = base.read_json(reports / "automation-result.json")
     attempts = []
+    previous_render_inputs = None
     has_image_key = bool(os.environ.get("OPENAI_API_KEY"))
 
     if result.get("auto_publish_ready") is True:
@@ -109,6 +130,20 @@ def main() -> int:
 
         base.archive_attempt(reports, repair, "before")
         regenerated = base.regenerate_images_if_needed(story, result, reports)
+        render_inputs = render_input_digest(story)
+        if (render_inputs is not None and render_inputs == previous_render_inputs
+                and not regenerated and result.get("used_generated_images") is True
+                and failed_checks(result) == ["headline_layout_qa"]):
+            # This renderer has no alternate OPENING_SAFE_MODE layout. Repeating
+            # a completed render with identical inputs cannot repair its opening.
+            attempts.append({
+                "repair": repair,
+                "action": "stopped",
+                "reason": "unchanged-opening-render-inputs",
+                "failed_checks": failed_checks(result),
+                "publish_blockers": publish_blockers(result),
+            })
+            break
         env = dict(os.environ)
         env["OPENING_SAFE_MODE"] = "1"
 
@@ -132,6 +167,7 @@ def main() -> int:
             continue
 
         compressed = base.optimize_if_needed(video)
+        previous_render_inputs = render_inputs
         result = perform_qa(story, video, reports)
         ready = result.get("auto_publish_ready") is True
         attempts.append({

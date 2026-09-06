@@ -119,6 +119,10 @@ def build_result(story, video, reports, story_valid=True):
         media.get(key, {}).get("reason", f"{key} evidence missing") if key in {"decode_error_free", "black_frame_check"} else
         ("all headline layout rules passed" if value else "; ".join(opening.get("reasons", [])) or "headline QA evidence missing")
     )} for key, value in checks.items() if key in {"decode_error_free", "black_frame_check", "headline_layout_qa"}}
+    details["headline_layout_qa"]["failed_checks"] = [
+        name for name, passed in opening.get("checks", {}).items() if passed is not True
+    ]
+    details["headline_layout_qa"]["frames"] = frames
     publish_blockers = [f"qa:{name}" for name, passed in checks.items() if not passed]
     if not used:
         publish_blockers.append("generated_images_not_ready")

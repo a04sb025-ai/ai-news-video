@@ -13,6 +13,14 @@
 7. Upload artifacts whether the final result succeeds or fails.
 8. Fail the workflow unless the final `automation-result.json` says `auto_publish_ready: true`.
 
+For adaptive videos, a completed repair render that still fails only opening QA
+is not repeated when the story, renderer scripts, illustrations, and character
+asset are unchanged and generated-image evidence is complete. The stop reason is
+`unchanged-opening-render-inputs`. Missing input evidence, changed assets, and
+render/media failures retain the bounded retry behavior. The rejected MP4 and
+thumbnail are kept for diagnostics. Opening frame measurements and failed check
+names are included in `automation-result.json` without changing any QA threshold.
+
 ## Never auto-bypassed
 
 The repair loop does **not** rewrite or relax verified facts, voice-script truth, headline truth, decode checks, black-frame checks, opening layout checks, or the final auto-publish gate. A story-validation failure, voice-script failure, or verified-headline semantic mismatch stops automatic repair and leaves diagnostics for review.
