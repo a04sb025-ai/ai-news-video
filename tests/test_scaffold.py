@@ -61,7 +61,7 @@ class ScaffoldTest(unittest.TestCase):
         self.assertEqual(config["provider"], "openai")
         self.assertEqual(config["api_key_env"], "OPENAI_API_KEY")
         self.assertEqual(config["prompt_version"], "teen-editorial-v2")
-        self.assertEqual(config["quality"], "high")
+        self.assertEqual(config["quality"], "medium")
         self.assertEqual(generator.count('"scene-teen-hero.png":'), 1)
         self.assertEqual(generator.count('"scene-teen-thinking.png":'), 1)
         self.assertEqual(generator.count('"scene-teen-safety.png":'), 1)
