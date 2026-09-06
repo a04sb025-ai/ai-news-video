@@ -66,6 +66,20 @@ class AdaptiveExplainerTest(unittest.TestCase):
         self.assertIn("Style: OpeningSubtitle,Noto Sans CJK JP,46", renderer)
         self.assertIn('"opening_headline_target_chars_per_line": 9', renderer)
 
+    def test_explicit_pronunciation_terms_remain_authoritative(self):
+        self.assertEqual(module.speak("30B級です", {"30B": "サーティービー"}), "サーティービー級です")
+
+    def test_common_english_names_are_normalized_before_tts(self):
+        spoken = module.speak("OpenAIとMicrosoftをSeattle Timesが提訴", {})
+        self.assertEqual(spoken, "オープンエーアイとマイクロソフトをシアトル タイムズが提訴")
+        self.assertIsNone(module.LATIN_TOKEN.search(spoken))
+
+    def test_unknown_ascii_tokens_fall_back_to_deterministic_letter_reading(self):
+        spoken = module.speak("ABC-X9を試す", {})
+        self.assertNotIn("ABC", spoken)
+        self.assertNotIn("X9", spoken)
+        self.assertIsNone(module.LATIN_TOKEN.search(spoken))
+
 
 if __name__ == "__main__":
     unittest.main()

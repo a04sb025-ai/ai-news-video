@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
+LATIN_TOKEN = re.compile(r"(?<![A-Za-z0-9])([A-Za-z][A-Za-z0-9.+_-]*)(?![A-Za-z0-9])")
 ALLOWED_ROLES = {
     "hook", "context", "definition", "landscape", "position", "fact",
     "reason", "issue", "impact", "caveat", "conclusion",
@@ -38,6 +39,37 @@ OUTRO_SECONDS = 2.5
 IMAGE_BUDGET = 4
 BREAK_AFTER = ("。", "！", "？", "、", "：", ":", "—", "・", " ")
 OPENING_PROTECTED_TOKENS = ("投資", "出資", "買収", "増産", "拡大", "規制", "公開", "発表", "導入", "提供", "開始", "強化", "更新", "発売")
+COMMON_VOICE_READINGS = {
+    "openai": "オープンエーアイ",
+    "chatgpt": "チャットジーピーティー",
+    "microsoft": "マイクロソフト",
+    "google": "グーグル",
+    "gemini": "ジェミニ",
+    "claude": "クロード",
+    "anthropic": "アンソロピック",
+    "meta": "メタ",
+    "apple": "アップル",
+    "amazon": "アマゾン",
+    "nvidia": "エヌビディア",
+    "github": "ギットハブ",
+    "youtube": "ユーチューブ",
+    "threads": "スレッズ",
+    "techcrunch": "テッククランチ",
+    "seattle": "シアトル",
+    "times": "タイムズ",
+    "newsday": "ニューズデイ",
+}
+LETTER_READINGS = {
+    "A": "エー", "B": "ビー", "C": "シー", "D": "ディー", "E": "イー", "F": "エフ",
+    "G": "ジー", "H": "エイチ", "I": "アイ", "J": "ジェー", "K": "ケー", "L": "エル",
+    "M": "エム", "N": "エヌ", "O": "オー", "P": "ピー", "Q": "キュー", "R": "アール",
+    "S": "エス", "T": "ティー", "U": "ユー", "V": "ブイ", "W": "ダブリュー", "X": "エックス",
+    "Y": "ワイ", "Z": "ゼット",
+}
+DIGIT_READINGS = {
+    "0": "ゼロ", "1": "ワン", "2": "ツー", "3": "スリー", "4": "フォー",
+    "5": "ファイブ", "6": "シックス", "7": "セブン", "8": "エイト", "9": "ナイン",
+}
 
 
 def _valid_text(value, maximum):
@@ -56,10 +88,36 @@ def filename(payload):
     return f"{payload['request_id']}-{content_hash(payload)}.mp4"
 
 
+def _fallback_latin_reading(token):
+    known = COMMON_VOICE_READINGS.get(token.casefold())
+    if known:
+        return known
+    parts = []
+    for character in token:
+        if character.isalpha():
+            parts.append(LETTER_READINGS.get(character.upper(), character))
+        elif character.isdigit():
+            parts.append(DIGIT_READINGS[character])
+        elif character == ".":
+            parts.append("ドット")
+        elif character == "+":
+            parts.append("プラス")
+        elif character in {"-", "_"}:
+            parts.append(" ")
+    return "".join(parts).strip() or token
+
+
 def speak(text, terms):
+    """Return Open JTalk-safe narration without leaving raw Latin tokens behind.
+
+    Explicit narration_terms remain authoritative. Any uncovered ASCII token gets a
+    deterministic Japanese reading so Open JTalk cannot improvise a very slow or
+    stretched pronunciation for an English brand/product name.
+    """
+    text = unicodedata.normalize("NFKC", text)
     for written in sorted(terms, key=len, reverse=True):
         text = text.replace(written, terms[written])
-    return text
+    return LATIN_TOKEN.sub(lambda match: _fallback_latin_reading(match.group(1)), text)
 
 
 def spoken_character_count(text):
