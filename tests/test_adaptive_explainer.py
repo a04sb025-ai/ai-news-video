@@ -66,6 +66,13 @@ class AdaptiveExplainerTest(unittest.TestCase):
         self.assertIn("Style: OpeningSubtitle,Noto Sans CJK JP,46", renderer)
         self.assertIn('"opening_headline_target_chars_per_line": 9', renderer)
 
+    def test_renderer_synthesizes_narration_in_one_continuous_pass(self):
+        renderer = (ROOT / "scripts/render_adaptive_explainer.py").read_text()
+        self.assertIn('narration.write_text("\\n".join(cue["narration"].strip() for cue in story["script"])', renderer)
+        self.assertIn('"audio_pipeline": "single-pass-open-jtalk-v1"', renderer)
+        self.assertNotIn('voice-{index}-raw.wav', renderer)
+        self.assertNotIn('concat=n={len(cue_wavs)}', renderer)
+
     def test_explicit_pronunciation_terms_remain_authoritative(self):
         self.assertEqual(module.speak("30B級です", {"30B": "サーティービー"}), "サーティービー級です")
 
