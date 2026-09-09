@@ -60,6 +60,7 @@ class AdaptiveRetryEvidenceTest(unittest.TestCase):
                   patch.object(heal.base, "regenerate_images_if_needed", return_value=False),
                   patch.object(heal.base, "optimize_if_needed", return_value=False),
                   patch.object(heal.base, "archive_attempt"),
+                  patch.object(heal, "apply_opening_visual_lift", return_value=0.12),
                   patch.object(heal, "perform_qa", side_effect=qa),
                   contextlib.redirect_stdout(io.StringIO())):
                 status = heal.main()
@@ -69,10 +70,11 @@ class AdaptiveRetryEvidenceTest(unittest.TestCase):
                 self.assertTrue(thumbnail.is_file())
             return status, renders.call_count, summary
 
-    def test_identical_opening_retry_stops_without_publishing_or_deleting_evidence(self):
+    def test_identical_opening_gets_bounded_second_safe_correction(self):
         status, count, summary = self.exercise()
-        self.assertEqual((status, count, summary["repairs"]), (1, 1, 1))
-        self.assertEqual(summary["attempts"][-1]["reason"], "unchanged-opening-render-inputs")
+        self.assertEqual((status, count, summary["repairs"]), (1, 2, 2))
+        self.assertEqual(summary["attempts"][-1]["action"], "safe-rerender")
+        self.assertTrue(summary["attempts"][-1]["repeated_render_inputs"])
         self.assertFalse(summary["final"]["auto_publish_ready"])
 
     def test_changed_artwork_still_gets_second_render(self):
