@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +14,7 @@ import self_heal_daily_video as base
 
 RENDERER = "scripts/render_adaptive_explainer.py"
 MAX_REPAIRS = int(os.environ.get("SELF_HEAL_MAX_REPAIRS", "2"))
+OPENING_VISUAL_REGION = (82, 700, 916, 570)
 
 
 def failed_checks(result: dict) -> list[str]:
@@ -44,6 +46,67 @@ def publish_only_retryable(result: dict, attempts: list[dict], has_image_key: bo
         if attempt.get("regenerated_images") is True and attempt.get("publish_blockers") == blockers:
             return False
     return True
+
+
+def opening_visual_lift_alpha(repair: int) -> float:
+    """Return a bounded deterministic lift for a dark opening visual.
+
+    The first correction is deliberately subtle. A second bounded repair can be
+    stronger if the objective opening QA still says the visual is too dark.
+    """
+    base_alpha = float(os.environ.get("OPENING_SAFE_VISUAL_LIFT", "0.12"))
+    return min(0.20, max(0.06, base_alpha + max(0, repair - 1) * 0.06))
+
+
+def opening_visual_lift_filter(alpha: float, *, timed: bool) -> str:
+    x, y, width, height = OPENING_VISUAL_REGION
+    value = f"drawbox=x={x}:y={y}:w={width}:h={height}:color=white@{alpha:.2f}:t=fill"
+    return value + (":enable='lt(t,3)'" if timed else "")
+
+
+def apply_opening_visual_lift(video: Path, thumbnail: Path, repair: int) -> float:
+    """Lift only the opening artwork region without weakening any QA threshold."""
+    alpha = opening_visual_lift_alpha(repair)
+    corrected_video = video.with_name(f".{video.stem}.opening-safe{video.suffix}")
+    corrected_thumbnail = thumbnail.with_name(f".{thumbnail.stem}.opening-safe{thumbnail.suffix}")
+    corrected_video.unlink(missing_ok=True)
+    corrected_thumbnail.unlink(missing_ok=True)
+
+    subprocess.run([
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(video),
+        "-vf", opening_visual_lift_filter(alpha, timed=True),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+        "-c:a", "copy", "-movflags", "+faststart", str(corrected_video),
+    ], check=True)
+    subprocess.run([
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(thumbnail),
+        "-vf", opening_visual_lift_filter(alpha, timed=False),
+        "-frames:v", "1", "-q:v", "2", str(corrected_thumbnail),
+    ], check=True)
+    if not corrected_video.is_file() or corrected_video.stat().st_size <= 0:
+        raise RuntimeError("Opening safe-mode video correction produced no output")
+    if not corrected_thumbnail.is_file() or corrected_thumbnail.stat().st_size <= 0:
+        raise RuntimeError("Opening safe-mode thumbnail correction produced no output")
+
+    corrected_video.replace(video)
+    corrected_thumbnail.replace(thumbnail)
+
+    manifest_path = video.with_suffix(".render.json")
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        manifest = {}
+    manifest.update({
+        "opening_safe_mode": True,
+        "opening_safe_visual_lift_alpha": alpha,
+        "opening_safe_visual_region": {
+            "x": OPENING_VISUAL_REGION[0], "y": OPENING_VISUAL_REGION[1],
+            "width": OPENING_VISUAL_REGION[2], "height": OPENING_VISUAL_REGION[3],
+        },
+        "opening_thumbnail_safe_correction": True,
+    })
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
+    return alpha
 
 
 def perform_qa(story: Path, video: Path, reports: Path) -> dict:
@@ -131,19 +194,11 @@ def main() -> int:
         base.archive_attempt(reports, repair, "before")
         regenerated = base.regenerate_images_if_needed(story, result, reports)
         render_inputs = render_input_digest(story)
-        if (render_inputs is not None and render_inputs == previous_render_inputs
-                and not regenerated and result.get("used_generated_images") is True
-                and failed_checks(result) == ["headline_layout_qa"]):
-            # This renderer has no alternate OPENING_SAFE_MODE layout. Repeating
-            # a completed render with identical inputs cannot repair its opening.
-            attempts.append({
-                "repair": repair,
-                "action": "stopped",
-                "reason": "unchanged-opening-render-inputs",
-                "failed_checks": failed_checks(result),
-                "publish_blockers": publish_blockers(result),
-            })
-            break
+        repeated_dark_opening = (
+            render_inputs is not None and render_inputs == previous_render_inputs
+            and not regenerated and result.get("used_generated_images") is True
+            and failed_checks(result) == ["headline_layout_qa"]
+        )
         env = dict(os.environ)
         env["OPENING_SAFE_MODE"] = "1"
 
@@ -166,6 +221,10 @@ def main() -> int:
             })
             continue
 
+        lift_alpha = None
+        if failed_checks(result) == ["headline_layout_qa"]:
+            lift_alpha = apply_opening_visual_lift(video, thumbnail, repair)
+
         compressed = base.optimize_if_needed(video)
         previous_render_inputs = render_inputs
         result = perform_qa(story, video, reports)
@@ -177,6 +236,8 @@ def main() -> int:
             "rendered": True,
             "thumbnail_rendered": True,
             "regenerated_images": regenerated,
+            "opening_visual_lift_alpha": lift_alpha,
+            "repeated_render_inputs": repeated_dark_opening,
             "compressed": compressed,
             "auto_publish_ready": ready,
             "failed_checks": failed_checks(result),
