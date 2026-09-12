@@ -1,7 +1,7 @@
 {
   "models": ["gpt-image-1", "gpt-image-2"],
   "size": "1024x1536",
-  "quality": "high",
+  "quality": "low",
   "prompt_version": "key-visual-ab-v1",
   "api_key_env": "OPENAI_API_KEY",
   "output_directory": "assets/generated/ab-tests"
