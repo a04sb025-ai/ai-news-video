@@ -6,11 +6,11 @@ import write_automation_result as base
 
 THUMBNAIL_STYLE_CONTRACT = "A-breaking-B-magazine-C-declarative"
 LEGACY_ADAPTIVE_RENDERER = "adaptive-explainer-v1"
-THUMBNAIL_ADAPTIVE_RENDERER = "adaptive-explainer-v2-thumbnail-abc"
+THUMBNAIL_ADAPTIVE_RENDERER = "adaptive-explainer-v3-shorts-safe"
 
 
 def expected_adaptive_renderer(story):
-    """Keep legacy evidence strict while accepting v2 only for the explicit thumbnail contract."""
+    """Keep legacy evidence strict while accepting the current explicit thumbnail contract renderer."""
     contract = story.get("opening", {}).get("thumbnail_style_contract")
     return THUMBNAIL_ADAPTIVE_RENDERER if contract == THUMBNAIL_STYLE_CONTRACT else LEGACY_ADAPTIVE_RENDERER
 
