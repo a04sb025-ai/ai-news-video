@@ -2,7 +2,7 @@
   "provider": "openai",
   "model": "gpt-image-2",
   "size": "1024x1536",
-  "quality": "medium",
+  "quality": "low",
   "prompt_version": "teen-editorial-v2",
   "api_key_env": "OPENAI_API_KEY",
   "output_directory": "assets/generated"
