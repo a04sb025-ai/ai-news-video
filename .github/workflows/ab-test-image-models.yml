@@ -33,7 +33,7 @@ run-name: Image model AB test / ${{ inputs.request_id || 'story request' }}
       quality:
         description: Image quality
         required: true
-        default: high
+        default: low
         type: string
 
 permissions: {contents: read}
