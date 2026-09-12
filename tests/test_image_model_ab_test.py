@@ -20,6 +20,10 @@ class ImageModelAbTestTests(unittest.TestCase):
             "image_scenes": [{"role": "hook", "verified_content": "検証済みの発表", "visual_intent": "主役と変化を示す", "key_visuals": ["主役", "変化"]}],
         }
 
+    def test_default_quality_is_low(self):
+        self.assertEqual(ab.CONFIG["quality"], "low")
+        self.assertEqual(ab.parse_args([]).quality, "low")
+
     def test_prompt_uses_story_context_and_visual_rules(self):
         prompt = ab.build_prompt(self.fixture())
         self.assertIn("新しいAI機能", prompt)
