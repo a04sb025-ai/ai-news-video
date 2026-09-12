@@ -117,7 +117,7 @@ class ThumbnailOpeningModesTest(unittest.TestCase):
 
     def test_adaptive_result_requires_matching_renderer_for_each_contract(self):
         story = module.build_story(module.validate(payload("C")))
-        self.assertEqual(adaptive_result.expected_adaptive_renderer(story), "adaptive-explainer-v2-thumbnail-abc")
+        self.assertEqual(adaptive_result.expected_adaptive_renderer(story), "adaptive-explainer-v3-shorts-safe")
         self.assertEqual(adaptive_result.expected_adaptive_renderer({"opening": {}}), "adaptive-explainer-v1")
         legacy_with_style_only = {"opening": {"thumbnail_style": "C"}}
         self.assertEqual(adaptive_result.expected_adaptive_renderer(legacy_with_style_only), "adaptive-explainer-v1")

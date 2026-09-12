@@ -41,8 +41,15 @@ if OPENING_STYLE not in {"A", "B", "C"}:
     raise SystemExit("opening.thumbnail_style must be A, B or C")
 OPENING_END = min(3.0, float(story["script"][0]["end"]))
 OPENING_LAYOUT_CONTRACT = "split-text-visual-v1"
-BODY_LAYOUT_CONTRACT = "split-text-visual-v1"
+BODY_LAYOUT_CONTRACT = "youtube-shorts-ui-safe-v2"
 THUMBNAIL_RENDER_SECONDS = min(0.5, max(0.1, OPENING_END / 2))
+
+# YouTube Shorts overlays are not part of the encoded video, so critical copy must
+# stay away from the app chrome. These values are deliberately conservative for
+# the 1080x1920 master. The bottom progress bar is decorative and may sit outside.
+SHORTS_UI_SAFE_AREA = {"left": 72, "right": 888, "top": 160, "bottom": 1344}
+SHORTS_UI_EXCLUSION = {"top": 160, "right": 192, "bottom": 576, "left": 72}
+BODY_TEXT_AREA = {"left": 72, "right": 888, "top": 742, "bottom": 1328}
 
 
 def stamp(seconds):
@@ -68,15 +75,15 @@ def rect_path(x, y, width, height):
 
 
 def add_body_page(events, cue, start, end, *, fade=True):
-    """Use the generated scene's reserved lower negative space instead of masking the artwork."""
+    """Keep every important body-text layer above Shorts metadata and left of the action rail."""
     if end <= start:
         return
     fade_tag = r"\fad(100,100)" if fade else ""
-    events.append(vector(start, end, rect_path(90, 1088, 180, 8), "58D6FF", fade_tag, 4))
-    events.append(dialogue(start, end, "Eyebrow", cue["label"], rf"\pos(90,1105){fade_tag}", 5))
-    events.append(dialogue(start, end, "SectionHeadline", cue["caption"], rf"\pos(90,1170){fade_tag}", 6))
-    events.append(dialogue(start, end, "Support", cue["support_text"], rf"\pos(90,1360){fade_tag}", 6))
-    events.append(dialogue(start, end, "Subtitle", cue["subtitle"], rf"\pos(90,1480){fade_tag}", 7))
+    events.append(vector(start, end, rect_path(72, 742, 180, 8), "58D6FF", fade_tag, 4))
+    events.append(dialogue(start, end, "Eyebrow", cue["label"], rf"\pos(72,760){fade_tag}", 5))
+    events.append(dialogue(start, end, "SectionHeadline", cue["caption"], rf"\pos(72,820){fade_tag}", 6))
+    events.append(dialogue(start, end, "Support", cue["support_text"], rf"\pos(72,970){fade_tag}", 6))
+    events.append(dialogue(start, end, "Subtitle", cue["subtitle"], rf"\pos(72,1090){fade_tag}", 7))
 
 
 def add_opening_body_page(events, cue, start, end):
@@ -84,33 +91,33 @@ def add_opening_body_page(events, cue, start, end):
     if end <= start:
         return
     fade_tag = r"\fad(100,100)"
-    events.append(vector(start, end, rect_path(90, 132, 180, 8), "58D6FF", fade_tag, 4))
-    events.append(dialogue(start, end, "Eyebrow", cue["label"], rf"\pos(90,150){fade_tag}", 5))
-    events.append(dialogue(start, end, "SectionHeadline", cue["caption"], rf"\pos(90,215)\fs64{fade_tag}", 6))
-    events.append(dialogue(start, end, "Support", cue["support_text"], rf"\pos(90,390)\fs40{fade_tag}", 6))
-    events.append(dialogue(start, end, "Subtitle", cue["subtitle"], rf"\pos(90,500)\fs44{fade_tag}", 7))
+    events.append(vector(start, end, rect_path(90, 170, 180, 8), "58D6FF", fade_tag, 4))
+    events.append(dialogue(start, end, "Eyebrow", cue["label"], rf"\pos(90,188){fade_tag}", 5))
+    events.append(dialogue(start, end, "SectionHeadline", cue["caption"], rf"\pos(90,250)\fs64{fade_tag}", 6))
+    events.append(dialogue(start, end, "Support", cue["support_text"], rf"\pos(90,425)\fs40{fade_tag}", 6))
+    events.append(dialogue(start, end, "Subtitle", cue["subtitle"], rf"\pos(90,535)\fs44{fade_tag}", 7))
 
 
 def add_opening(events, cue):
     """Place typography in the generated image's reserved negative space without masking the artwork."""
     start, end = 0.0, OPENING_END
     if OPENING_STYLE == "A":
-        events.append(vector(start, end, rect_path(62, 170, 18, 455), "00A5FF", layer=4))
-        events.append(vector(start, end, rect_path(82, 665, 900, 10), "00A5FF", layer=4))
-        events.append(dialogue(start, end, "Eyebrow", "AI NEWS", r"\pos(92,155)\1c&H00A5FF&", 5))
-        events.append(dialogue(start, end, "OpeningHeadline", cue["caption"], r"\pos(110,235)\fs108\bord10\3c&H08111F&", 7))
-        events.append(dialogue(start, end, "OpeningBrand", "AIツールウォッチ", r"\pos(92,620)", 8))
+        events.append(vector(start, end, rect_path(62, 190, 18, 455), "00A5FF", layer=4))
+        events.append(vector(start, end, rect_path(82, 685, 900, 10), "00A5FF", layer=4))
+        events.append(dialogue(start, end, "Eyebrow", "AI NEWS", r"\pos(92,175)\1c&H00A5FF&", 5))
+        events.append(dialogue(start, end, "OpeningHeadline", cue["caption"], r"\pos(110,255)\fs108\bord10\3c&H08111F&", 7))
+        events.append(dialogue(start, end, "OpeningBrand", "AIツールウォッチ", r"\pos(92,640)", 8))
     elif OPENING_STYLE == "C":
-        events.append(vector(start, end, rect_path(88, 205, 185, 8), "C87CFF", layer=4))
-        events.append(dialogue(start, end, "Eyebrow", "AI NEWS", r"\pos(90,150)\1c&HC87CFF&", 5))
-        events.append(dialogue(start, end, "OpeningHeadline", cue["caption"], r"\pos(90,265)\fs120\bord9\3c&H101528&", 7))
+        events.append(vector(start, end, rect_path(88, 225, 185, 8), "C87CFF", layer=4))
+        events.append(dialogue(start, end, "Eyebrow", "AI NEWS", r"\pos(90,175)\1c&HC87CFF&", 5))
+        events.append(dialogue(start, end, "OpeningHeadline", cue["caption"], r"\pos(90,285)\fs120\bord9\3c&H101528&", 7))
         events.append(dialogue(start, end, "OpeningBrand", "AIツールウォッチ", r"\pos(90,650)", 8))
     else:
-        events.append(vector(start, end, rect_path(78, 188, 250, 8), "00A5FF", layer=4))
-        events.append(vector(start, end, rect_path(338, 188, 112, 8), "C87CFF", layer=4))
-        events.append(dialogue(start, end, "Eyebrow", "AI NEWS", r"\pos(86,145)", 5))
-        events.append(dialogue(start, end, "OpeningHeadline", cue["caption"], r"\pos(88,255)\fs106\bord9\3c&H101528&", 7))
-        events.append(dialogue(start, end, "OpeningBrand", "AIツールウォッチ", r"\pos(88,630)", 8))
+        events.append(vector(start, end, rect_path(78, 210, 250, 8), "00A5FF", layer=4))
+        events.append(vector(start, end, rect_path(338, 210, 112, 8), "C87CFF", layer=4))
+        events.append(dialogue(start, end, "Eyebrow", "AI NEWS", r"\pos(86,170)", 5))
+        events.append(dialogue(start, end, "OpeningHeadline", cue["caption"], r"\pos(88,275)\fs106\bord9\3c&H101528&", 7))
+        events.append(dialogue(start, end, "OpeningBrand", "AIツールウォッチ", r"\pos(88,650)", 8))
 
 
 def render_opening_thumbnail(ass, destination):
@@ -224,13 +231,13 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-Style: Eyebrow,Noto Sans CJK JP,40,&H00FFF1C7,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,4,0,1,0,0,7,70,70,105,1
+Style: Eyebrow,Noto Sans CJK JP,40,&H00FFF1C7,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,4,0,1,0,0,7,72,192,105,1
 Style: OpeningHeadline,Noto Sans CJK JP,106,&H00FFFFFF,&H00FFFFFF,&H00009BFF,&H00101528,-1,0,0,0,100,100,0,0,1,8,3,7,90,90,210,1
 Style: OpeningBrand,Noto Sans CJK JP,34,&H00FFFFFF,&H00FFFFFF,&H00101528,&H00101528,-1,0,0,0,100,100,2,0,1,3,0,7,70,70,0,1
 Style: OpeningSubtitle,Noto Sans CJK JP,46,&H00FFFFFF,&H00FFFFFF,&H00101528,&H00101528,-1,0,0,0,100,100,0,0,3,2,0,7,30,30,0,1
-Style: SectionHeadline,Noto Sans CJK JP,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,7,90,90,0,1
-Style: Support,Noto Sans CJK JP,48,&H00FFF1C7,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,7,90,90,0,1
-Style: Subtitle,Noto Sans CJK JP,52,&H00FFFFFF,&H00FFFFFF,&H00101528,&H00101528,-1,0,0,0,100,100,0,0,3,2,0,7,90,90,0,1
+Style: SectionHeadline,Noto Sans CJK JP,60,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,7,72,192,0,1
+Style: Support,Noto Sans CJK JP,48,&H00FFF1C7,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,7,72,192,0,1
+Style: Subtitle,Noto Sans CJK JP,48,&H00FFFFFF,&H00FFFFFF,&H00101528,&H00101528,-1,0,0,0,100,100,0,0,3,2,0,7,72,192,0,1
 Style: Outro,Noto Sans CJK JP,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,2,0,1,0,0,5,60,60,60,1
 Style: Shape,Arial,20,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
 
@@ -312,12 +319,12 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         temporary_thumbnail.unlink(missing_ok=True)
 
 manifest = {
-    "renderer": "adaptive-explainer-v2-thumbnail-abc",
+    "renderer": "adaptive-explainer-v3-shorts-safe",
     "content_hash": story.get("content_hash"),
     "page_count": len(story.get("script", [])) - 1,
     "duration_seconds": DURATION,
     "full_narration_subtitles": True,
-    "subtitle_font_size_px": 52,
+    "subtitle_font_size_px": 48,
     "opening_subtitle_font_size_px": 46,
     "opening_headline_font_size_px": {"A": 108, "B": 106, "C": 120}[OPENING_STYLE],
     "opening_headline_target_chars_per_line": 9,
@@ -327,7 +334,7 @@ manifest = {
     "opening_single_dominant_visual": True,
     "opening_thumbnail_window_seconds": OPENING_END,
     "opening_layout_contract": OPENING_LAYOUT_CONTRACT,
-    "opening_text_safe_area_ratio": {"top": 0.0, "bottom": 0.40},
+    "opening_text_safe_area_ratio": {"top": 0.08, "bottom": 0.40},
     "opening_dominant_visual_area_ratio": {"top": 0.42, "bottom": 0.82},
     "opening_large_overlay_panel": False,
     "opening_generated_image_full_frame": True,
@@ -339,8 +346,11 @@ manifest = {
     "opening_thumbnail_render_seconds": THUMBNAIL_RENDER_SECONDS,
     "opening_thumbnail_sha256": hashlib.sha256(thumbnail_output.read_bytes()).hexdigest(),
     "body_layout_contract": BODY_LAYOUT_CONTRACT,
-    "body_text_safe_area_ratio": {"top": 0.58, "bottom": 0.91},
-    "body_dominant_visual_area_ratio": {"top": 0.08, "bottom": 0.54},
+    "youtube_shorts_ui_safe_area_px": SHORTS_UI_SAFE_AREA,
+    "youtube_shorts_ui_exclusion_px": SHORTS_UI_EXCLUSION,
+    "body_text_safe_area_px": BODY_TEXT_AREA,
+    "body_text_safe_area_ratio": {"left": 0.067, "right": 0.822, "top": 0.386, "bottom": 0.692},
+    "body_dominant_visual_area_ratio": {"top": 0.08, "bottom": 0.36},
     "body_large_overlay_panel": False,
     "body_generated_image_full_frame": True,
     "used_generated_images": USE_STORY_IMAGES,

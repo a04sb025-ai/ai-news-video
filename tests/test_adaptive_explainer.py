@@ -62,9 +62,10 @@ class AdaptiveExplainerTest(unittest.TestCase):
 
     def test_renderer_uses_large_mobile_subtitles(self):
         renderer = (ROOT / "scripts/render_adaptive_explainer.py").read_text()
-        self.assertIn("Style: Subtitle,Noto Sans CJK JP,52", renderer)
+        self.assertIn("Style: Subtitle,Noto Sans CJK JP,48", renderer)
         self.assertIn("Style: OpeningSubtitle,Noto Sans CJK JP,46", renderer)
         self.assertIn('"opening_headline_target_chars_per_line": 9', renderer)
+        self.assertIn('"subtitle_font_size_px": 48', renderer)
 
     def test_explicit_pronunciation_terms_remain_authoritative(self):
         self.assertEqual(module.speak("30B級です", {"30B": "サーティービー"}), "サーティービー級です")

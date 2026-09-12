@@ -106,9 +106,12 @@ jobs:
           assert all(len(line) <= 9 for line in story['script'][0]['caption'].splitlines())
           assert story['opening']['thumbnail_style_contract'] == 'A-breaking-B-magazine-C-declarative'
           assert voice['checks']['subtitles_cover_full_narration'] is True
-          assert manifest['renderer'] == 'adaptive-explainer-v2-thumbnail-abc'
+          assert manifest['renderer'] == 'adaptive-explainer-v3-shorts-safe'
           assert manifest['subtitle_font_size_px'] >= 48
           assert manifest['opening_headline_target_chars_per_line'] <= 10
+          assert manifest['youtube_shorts_ui_exclusion_px']['bottom'] == 576
+          assert manifest['youtube_shorts_ui_exclusion_px']['right'] == 192
+          assert manifest['body_text_safe_area_px'] == {'left': 72, 'right': 888, 'top': 742, 'bottom': 1328}
           assert result['success'] is True
           assert result['auto_publish_ready'] is False
           assert result['used_generated_images'] is False

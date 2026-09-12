@@ -32,11 +32,12 @@ OPENING_LAYOUT = (
     "behind text. The result must remain one continuous full-frame editorial illustration rather than two separate boxes. "
 )
 BODY_LAYOUT = (
-    "Body-page split-layout rule: keep the entire lower 42 percent of the canvas as deliberate text-safe negative space, "
-    "using only a calm low-detail continuation of the same background. Do not place any face, person, machine, building, chart, "
-    "focal object, bright highlight, or essential visual evidence in that lower zone. Place the dominant news subject and all important visual evidence "
-    "in the upper portion, concentrated roughly between 8 and 54 percent of the canvas height. "
-    "The renderer places the section label, headline, support copy, and subtitles directly in the reserved lower space, so do not paint a text panel, "
+    "Body-page YouTube Shorts safe-layout rule: reserve the middle band from 38 to 70 percent of canvas height as deliberate text-safe negative space, "
+    "using only a calm low-detail continuation of the same background. Also keep the bottom 30 percent free of essential text, faces, labels, numbers, or critical visual evidence "
+    "because YouTube channel metadata and playback controls cover that region on phones. Keep the rightmost 18 percent low-detail from roughly 36 percent of canvas height downward "
+    "because the Shorts like, comment, save, and share action rail occupies that side. Place the dominant news subject and all important visual evidence in the upper portion, "
+    "concentrated roughly between 8 and 36 percent of the canvas height. "
+    "The renderer places the section label, headline, support copy, and subtitles inside the protected middle band, so do not paint a text panel, "
     "caption card, banner, box, fake UI, or other shape behind text. Keep the result as one continuous full-frame editorial illustration. "
     "Preserve one-page-one-message: one dominant visual relationship, no collage of unrelated secondary symbols. "
 )
@@ -139,7 +140,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     quality = effective_quality()
     log = {
-        "prompt_version": "daily-editorial-v5-all-scenes-split-text-visual" if len(sys.argv) == 2 else CONFIG["prompt_version"],
+        "prompt_version": "daily-editorial-v6-shorts-ui-safe" if len(sys.argv) == 2 else CONFIG["prompt_version"],
         "content_hash": json.loads(Path(sys.argv[1]).read_text()).get("content_hash") if len(sys.argv) == 2 else None,
         "maximum": MAX_IMAGES,
         "configured_quality": CONFIG["quality"],
