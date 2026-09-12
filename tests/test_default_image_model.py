@@ -11,6 +11,10 @@ class DefaultImageModelTest(unittest.TestCase):
         config = json.loads((ROOT / "config/image-generation.json").read_text())
         self.assertEqual(config["model"], "gpt-image-2")
 
+    def test_production_default_quality_is_low(self):
+        config = json.loads((ROOT / "config/image-generation.json").read_text())
+        self.assertEqual(config["quality"], "low")
+
     def test_generation_script_reads_model_from_config(self):
         source = (ROOT / "scripts/generate_story_images.py").read_text()
         self.assertIn('"model": CONFIG["model"]', source)
