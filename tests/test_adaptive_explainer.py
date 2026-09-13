@@ -67,6 +67,16 @@ class AdaptiveExplainerTest(unittest.TestCase):
         self.assertIn('"opening_headline_target_chars_per_line": 9', renderer)
         self.assertIn('"subtitle_font_size_px": 48', renderer)
 
+    def test_renderer_keeps_scene_timing_and_guards_tail_prosody(self):
+        renderer = (ROOT / "scripts/render_adaptive_explainer.py").read_text()
+        self.assertIn('raw_wav = tmp / f"voice-{index}-raw.wav"', renderer)
+        self.assertIn("SCENE_TAIL_GUARD_SECONDS = 0.85", renderer)
+        self.assertIn("SCENE_TAIL_GUARD_TEMPO = 1.10", renderer)
+        self.assertIn("is_non_final_scene = index < len(story[\"script\"]) - 1", renderer)
+        self.assertIn("[head][tail]concat=n=2:v=0:a=1", renderer)
+        self.assertIn('"audio_pipeline": "scene-timed-open-jtalk-tailguard-v1"', renderer)
+        self.assertIn("audio_filter +=", renderer)
+
     def test_explicit_pronunciation_terms_remain_authoritative(self):
         self.assertEqual(module.speak("30B級です", {"30B": "サーティービー"}), "サーティービー級です")
 
