@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Generate cached editorial images for every adaptive explainer scene."""
-import base64, json, os, sys
+import base64, json, os, sys, time
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -9,6 +9,9 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIG = json.loads((ROOT / "config/image-generation.json").read_text())
 MAX_IMAGES = 10
 VALID_QUALITIES = {"low", "medium", "high"}
+RETRYABLE_HTTP_STATUSES = {408, 409, 429, 500, 502, 503, 504}
+IMAGE_GENERATION_ATTEMPTS = max(1, int(os.environ.get("IMAGE_GENERATION_ATTEMPTS", "3")))
+IMAGE_GENERATION_RETRY_SECONDS = max(0.0, float(os.environ.get("IMAGE_GENERATION_RETRY_SECONDS", "3")))
 COMMON = (
     "Original vertical editorial scene for the AI Tool Watch series, grounded only in the verified news content. "
     "Deep navy and black field, restrained amber, violet and lavender accents, subtle paper grain, soft light, "
@@ -64,6 +67,15 @@ TEEN = {
 }
 
 
+class ImageGenerationError(RuntimeError):
+    def __init__(self, message, *, status=None, provider_error="", retryable=False, attempts=1):
+        super().__init__(message)
+        self.status = status
+        self.provider_error = provider_error
+        self.retryable = retryable
+        self.attempts = attempts
+
+
 def effective_quality():
     override = os.environ.get("IMAGE_GENERATION_QUALITY")
     if override:
@@ -98,10 +110,60 @@ def story_prompts(path):
     return ROOT / story["image_asset_dir"], prompts
 
 
+def provider_error_text(error):
+    if not isinstance(error, HTTPError):
+        return ""
+    try:
+        raw = error.read().decode("utf-8", errors="replace")
+        payload = json.loads(raw)
+        detail = payload.get("error", {}) if isinstance(payload, dict) else {}
+        if isinstance(detail, dict):
+            return str(detail.get("message") or detail.get("code") or detail.get("type") or "")[:500]
+        return raw[:500]
+    except Exception:
+        return ""
+
+
+def request_generation(payload, api_key):
+    last_error = None
+    for attempt in range(1, IMAGE_GENERATION_ATTEMPTS + 1):
+        request = Request(
+            "https://api.openai.com/v1/images/generations",
+            data=payload,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=300) as response:
+                return json.load(response), attempt
+        except HTTPError as error:
+            status = int(getattr(error, "code", 0) or 0)
+            detail = provider_error_text(error)
+            retryable = status in RETRYABLE_HTTP_STATUSES
+            last_error = ImageGenerationError(
+                f"image provider HTTP {status}", status=status, provider_error=detail,
+                retryable=retryable, attempts=attempt,
+            )
+            if not retryable or attempt >= IMAGE_GENERATION_ATTEMPTS:
+                raise last_error from error
+        except URLError as error:
+            last_error = ImageGenerationError(
+                "image provider network error", provider_error=str(getattr(error, "reason", ""))[:500],
+                retryable=True, attempts=attempt,
+            )
+            if attempt >= IMAGE_GENERATION_ATTEMPTS:
+                raise last_error from error
+        if IMAGE_GENERATION_RETRY_SECONDS > 0:
+            delay = IMAGE_GENERATION_RETRY_SECONDS * attempt
+            print(f"image generation transient failure; retrying in {delay:.0f}s (attempt {attempt}/{IMAGE_GENERATION_ATTEMPTS})", file=sys.stderr)
+            time.sleep(delay)
+    raise last_error or ImageGenerationError("image provider request failed")
+
+
 def generate(destination, prompt, api_key, quality):
     if destination.is_file() and destination.stat().st_size > 0:
         print(f"reuse {destination.relative_to(ROOT)}")
-        return "reused"
+        return {"result": "reused", "attempts": 0}
     payload = json.dumps({
         "model": CONFIG["model"],
         "prompt": prompt,
@@ -110,22 +172,15 @@ def generate(destination, prompt, api_key, quality):
         "n": 1,
         "output_format": "png",
     }).encode()
-    request = Request(
-        "https://api.openai.com/v1/images/generations",
-        data=payload,
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        method="POST",
-    )
-    with urlopen(request, timeout=300) as response:
-        result = json.load(response)
+    result, attempts = request_generation(payload, api_key)
     data = result["data"][0].get("b64_json")
     if not data:
-        raise RuntimeError("image provider returned no PNG data")
+        raise ImageGenerationError("image provider returned no PNG data", attempts=attempts)
     temporary = destination.with_suffix(".png.part")
     temporary.write_bytes(base64.b64decode(data, validate=True))
     temporary.replace(destination)
-    print(f"generated {destination.relative_to(ROOT)} quality={quality}")
-    return "generated"
+    print(f"generated {destination.relative_to(ROOT)} quality={quality} attempts={attempts}")
+    return {"result": "generated", "attempts": attempts}
 
 
 def main():
@@ -145,7 +200,9 @@ def main():
         "maximum": MAX_IMAGES,
         "configured_quality": CONFIG["quality"],
         "effective_quality": quality,
+        "model": CONFIG["model"],
         "news_date": os.environ.get("NEWS_DATE"),
+        "request_attempts": IMAGE_GENERATION_ATTEMPTS,
         "expected_images": list(prompts),
         "images": [],
     }
@@ -158,12 +215,24 @@ def main():
         return 2
     try:
         for name, prompt in prompts.items():
-            log["images"].append({"file": name, "result": generate(output / name, prompt, key, quality)})
+            generated = generate(output / name, prompt, key, quality)
+            log["images"].append({"file": name, **generated})
         log["status"] = "complete"
-    except (HTTPError, URLError, RuntimeError, ValueError, KeyError) as error:
+    except (ImageGenerationError, RuntimeError, ValueError, KeyError) as error:
         log["status"] = "fallback"
         log["reason"] = type(error).__name__
-        print(f"image generation failed ({type(error).__name__}); no retry; renderer will use fallback", file=sys.stderr)
+        if isinstance(error, ImageGenerationError):
+            log["http_status"] = error.status
+            log["provider_error"] = error.provider_error
+            log["retryable"] = error.retryable
+            log["attempts"] = error.attempts
+        print(
+            f"image generation failed ({type(error).__name__})"
+            + (f" status={error.status}" if isinstance(error, ImageGenerationError) and error.status else "")
+            + (f" detail={error.provider_error}" if isinstance(error, ImageGenerationError) and error.provider_error else "")
+            + "; renderer will use fallback",
+            file=sys.stderr,
+        )
     (output / "image-generation-log.json").write_text(json.dumps(log, ensure_ascii=False, indent=2) + "\n")
     return 0 if log["status"] == "complete" else 1
 
