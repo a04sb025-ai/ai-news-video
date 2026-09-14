@@ -200,7 +200,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 events.append(dialogue(start, end, "Label", "NEW", r"\pos(850,1085)\fs34\1c&H6D59C7&", 5))
 
             # A softly irregular, hand-drawn speech balloon. The canonical Mozo
-            # PNG is composited later, above this card, from frame zero to 2.967s.
+            # PNG is composited later, above this card, for the measured opening scene.
             events.append(vector(start, end, "m 405 1410 b 405 1365 445 1345 500 1352 l 885 1352 b 940 1355 965 1390 958 1440 l 950 1490 b 940 1535 900 1555 845 1548 l 530 1548 b 475 1550 430 1525 425 1482 l 370 1530 395 1460 b 390 1440 395 1420 405 1410", "FFF4D6", layer=6))
             events.append(dialogue(start, end, "Label", template["bubble"], r"\pos(670,1460)\fs46", 7))
             if not USE_MOZO_OPENING_ASSET:
@@ -262,8 +262,10 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             command.extend(["-loop", "1", "-i", str(image)])
         scene_streams = []
         image_start = 3 if USE_MOZO_OPENING_ASSET else 2
-        for offset, (start, end) in enumerate(((0, 3), (3, 6), (6, 9), (9, 12)), start=image_start):
-            duration_frames = round((end - start) * FPS)
+        image_cues = story["script"][:len(STORY_IMAGES)]
+        for offset, cue in zip(range(image_start, image_start + len(STORY_IMAGES)), image_cues):
+            start, end = float(cue["start"]), float(cue["end"])
+            duration_frames = max(1, round((end - start) * FPS))
             zoom = "0" if start == 0 else "0.0006"
             fade = "" if start == 0 else "fade=t=in:st=0:d=0.12:alpha=1,"
             scene_streams.append(
@@ -272,22 +274,27 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 f"y='ih/2-(ih/zoom/2)':d={duration_frames}:s={WIDTH}x{HEIGHT}:fps={FPS},"
                 f"{fade}setpts=PTS+{start}/TB[scene{offset}];"
             )
-        scene_ids = list(range(image_start, image_start + 4))
-        overlays = f"[0:v][scene{scene_ids[0]}]overlay=enable='between(t,0,3)'[v2];"
-        overlays += f"[v2][scene{scene_ids[1]}]overlay=enable='between(t,3,6)'[v3];"
-        overlays += f"[v3][scene{scene_ids[2]}]overlay=enable='between(t,6,9)'[v4];"
-        overlays += f"[v4][scene{scene_ids[3]}]overlay=enable='between(t,9,12)'[base];"
+        scene_ids = list(range(image_start, image_start + len(image_cues)))
+        current = "[0:v]"
+        overlays = ""
+        for scene_no, (scene_id, cue) in enumerate(zip(scene_ids, image_cues), start=1):
+            start, end = float(cue["start"]), float(cue["end"])
+            out = f"v{scene_no + 1}"
+            overlays += f"{current}[scene{scene_id}]overlay=enable='between(t,{start},{end})'[{out}];"
+            current = f"[{out}]"
         if USE_MOZO_OPENING_ASSET:
-            overlays += "[2:v]scale=330:-1[mozo];[base][mozo]overlay=70:1360:enable='between(t,0,3)'[withmozo];"
+            opening_end = float(story["script"][0]["end"])
+            overlays += f"[2:v]scale=330:-1[mozo];{current}[mozo]overlay=70:1360:enable='between(t,0,{opening_end})'[withmozo];"
             overlays += f"[withmozo]subtitles={ass}[video]"
         else:
-            overlays += f"[base]subtitles={ass}[video]"
+            overlays += f"{current}subtitles={ass}[video]"
         filters = "".join(scene_streams) + overlays
         command.extend(["-filter_complex", filters, "-map", "[video]", "-map", "1:a"])
     else:
         print("Story images unavailable; using motion-graphics fallback", file=sys.stderr)
         if USE_MOZO_OPENING_ASSET:
-            command.extend(["-filter_complex", f"[2:v]scale=330:-1[mozo];[0:v][mozo]overlay=70:1360:enable='between(t,0,3)',subtitles={ass}[video]", "-map", "[video]", "-map", "1:a"])
+            opening_end = float(story["script"][0]["end"])
+            command.extend(["-filter_complex", f"[2:v]scale=330:-1[mozo];[0:v][mozo]overlay=70:1360:enable='between(t,0,{opening_end})',subtitles={ass}[video]", "-map", "[video]", "-map", "1:a"])
         else:
             command.extend(["-vf", f"subtitles={ass}"])
     command.extend([
