@@ -46,12 +46,13 @@ THUMBNAIL_RENDER_SECONDS = min(0.5, max(0.1, OPENING_END / 2))
 
 # Open JTalk naturally adds utterance-final prosody. Rendering every page as a
 # separate utterance can make that cadence sound like a brief slow-motion dip at
-# scene boundaries. Keep scene-timed synthesis (needed for reliable full-video
-# coverage), but compact only the final voiced window of non-final scenes.
-SCENE_TAIL_GUARD_SECONDS = 0.85
-SCENE_TAIL_GUARD_TEMPO = 1.10
+# scene boundaries. Keep scene-timed synthesis, but make the correction gentle:
+# compact only the final voiced window and never apply a second speed-up to it.
+SCENE_TAIL_GUARD_SECONDS = 0.70
+SCENE_TAIL_GUARD_TEMPO = 1.05
 SCENE_TAIL_GUARD_MIN_RAW_SECONDS = 1.60
-MAX_COMBINED_SPEECH_TEMPO = 1.32
+SCENE_FIT_MARGIN_SECONDS = 0.08
+MAX_LOCAL_SPEECH_TEMPO = 1.08
 
 # YouTube Shorts overlays are not part of the encoded video, so critical copy must
 # stay away from the app chrome. These values are deliberately conservative for
@@ -194,7 +195,8 @@ with tempfile.TemporaryDirectory() as directory:
     wav = tmp / "voice.wav"
     ass = tmp / "adaptive-explainer.ass"
     cue_wavs, cue_durations = [], []
-    cue_tempos, tail_guarded_scene_numbers = [], []
+    cue_tempos, cue_head_tempos, cue_tail_tempos = [], [], []
+    tail_guarded_scene_numbers = []
 
     for index, cue in enumerate(story["script"]):
         narration = tmp / f"narration-{index}.txt"
@@ -208,50 +210,61 @@ with tempfile.TemporaryDirectory() as directory:
         with wave.open(str(raw_wav)) as audio:
             raw_duration = audio.getnframes() / audio.getframerate()
         slot = float(cue["end"]) - float(cue["start"])
-        target_duration = max(slot - .28, .8)
-        base_speed = max(1.0, raw_duration / target_duration)
-        if base_speed > MAX_COMBINED_SPEECH_TEMPO:
-            raise SystemExit(
-                f"Narration for scene {index + 1} would require {base_speed:.2f}x speech; "
-                "increase scene duration or split the explanation instead of rushing it"
-            )
-
+        target_duration = max(slot - SCENE_FIT_MARGIN_SECONDS, .8)
         is_non_final_scene = index < len(story["script"]) - 1
-        allowed_tail_tempo = min(SCENE_TAIL_GUARD_TEMPO, MAX_COMBINED_SPEECH_TEMPO / base_speed)
-        use_tail_guard = (
-            is_non_final_scene
-            and raw_duration >= SCENE_TAIL_GUARD_MIN_RAW_SECONDS
-            and allowed_tail_tempo >= 1.03
-        )
+        use_tail_guard = is_non_final_scene and raw_duration >= SCENE_TAIL_GUARD_MIN_RAW_SECONDS
+
         if use_tail_guard:
-            tail_seconds = min(SCENE_TAIL_GUARD_SECONDS, raw_duration * 0.35)
+            tail_seconds = min(SCENE_TAIL_GUARD_SECONDS, raw_duration * 0.30)
             tail_start = raw_duration - tail_seconds
-            effective_duration = tail_start + (tail_seconds / allowed_tail_tempo)
-            speed = max(1.0, effective_duration / target_duration)
+            tail_tempo = SCENE_TAIL_GUARD_TEMPO
+            tail_after = tail_seconds / tail_tempo
+            available_head = max(target_duration - tail_after, .1)
+            head_tempo = max(1.0, tail_start / available_head)
+            if head_tempo > MAX_LOCAL_SPEECH_TEMPO:
+                raise SystemExit(
+                    f"Narration for scene {index + 1} would require {head_tempo:.2f}x speech; "
+                    "increase scene duration or split the explanation instead of rushing it"
+                )
             filter_complex = (
                 f"[0:a]asplit=2[headsrc][tailsrc];"
-                f"[headsrc]atrim=start=0:end={tail_start:.4f},asetpts=PTS-STARTPTS[head];"
+                f"[headsrc]atrim=start=0:end={tail_start:.4f},asetpts=PTS-STARTPTS,"
+                f"atempo={head_tempo:.4f}[head];"
                 f"[tailsrc]atrim=start={tail_start:.4f},asetpts=PTS-STARTPTS,"
-                f"atempo={allowed_tail_tempo:.4f}[tail];"
-                f"[head][tail]concat=n=2:v=0:a=1,atempo={speed:.4f},"
-                f"apad=pad_dur={slot:.4f},atrim=duration={slot:.4f}[out]"
+                f"atempo={tail_tempo:.4f}[tail];"
+                f"[head][tail]concat=n=2:v=0:a=1[joined];"
+                f"[joined]apad=pad_dur={slot:.4f},atrim=duration={slot:.4f}[out]"
             )
             subprocess.run([
                 "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw_wav),
                 "-filter_complex", filter_complex, "-map", "[out]", str(fitted_wav),
             ], check=True)
             tail_guarded_scene_numbers.append(index + 1)
+            scene_tempo = max(head_tempo, tail_tempo)
         else:
-            speed = base_speed
-            filters = [f"atempo={speed:.4f}", f"apad=pad_dur={slot}", f"atrim=duration={slot}"]
+            head_tempo = max(1.0, raw_duration / target_duration)
+            tail_tempo = 1.0
+            if head_tempo > MAX_LOCAL_SPEECH_TEMPO:
+                raise SystemExit(
+                    f"Narration for scene {index + 1} would require {head_tempo:.2f}x speech; "
+                    "increase scene duration or split the explanation instead of rushing it"
+                )
+            filters = [
+                f"atempo={head_tempo:.4f}",
+                f"apad=pad_dur={slot}",
+                f"atrim=duration={slot}",
+            ]
             subprocess.run([
                 "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw_wav),
                 "-af", ",".join(filters), str(fitted_wav),
             ], check=True)
+            scene_tempo = head_tempo
 
         cue_wavs.append(fitted_wav)
         cue_durations.append(slot)
-        cue_tempos.append(round(speed, 4))
+        cue_tempos.append(round(scene_tempo, 4))
+        cue_head_tempos.append(round(head_tempo, 4))
+        cue_tail_tempos.append(round(tail_tempo, 4))
 
     audio_inputs = [value for cue_wav in cue_wavs for value in ("-i", str(cue_wav))]
     audio_filter = "".join(
@@ -364,10 +377,14 @@ manifest = {
     "content_hash": story.get("content_hash"),
     "page_count": len(story.get("script", [])) - 1,
     "duration_seconds": DURATION,
-    "audio_pipeline": "scene-timed-open-jtalk-tailguard-v1",
+    "audio_pipeline": "scene-timed-open-jtalk-balanced-v2",
     "audio_scene_tempos": cue_tempos,
+    "audio_scene_head_tempos": cue_head_tempos,
+    "audio_scene_tail_tempos": cue_tail_tempos,
     "audio_tail_guard_seconds": SCENE_TAIL_GUARD_SECONDS,
     "audio_tail_guard_tempo": SCENE_TAIL_GUARD_TEMPO,
+    "audio_fit_margin_seconds": SCENE_FIT_MARGIN_SECONDS,
+    "audio_max_local_tempo": MAX_LOCAL_SPEECH_TEMPO,
     "audio_tail_guard_scene_numbers": tail_guarded_scene_numbers,
     "full_narration_subtitles": True,
     "subtitle_font_size_px": 48,
