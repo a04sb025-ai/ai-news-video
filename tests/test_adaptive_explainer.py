@@ -81,6 +81,15 @@ class AdaptiveExplainerTest(unittest.TestCase):
                 self.assertIn('"audio_tempo_adjustment": False', renderer)
                 self.assertNotIn("atempo=", renderer)
 
+    def test_rendered_timing_metadata_and_images_follow_measured_audio(self):
+        adaptive = (ROOT / "scripts/render_adaptive_explainer.py").read_text()
+        reference = (ROOT / "scripts/render_reference.py").read_text()
+        self.assertIn('story["expected_duration_seconds"] = round(DURATION, 2)', adaptive)
+        self.assertIn('image_cues = story["script"][:len(STORY_IMAGES)]', reference)
+        self.assertIn('start, end = float(cue["start"]), float(cue["end"])', reference)
+        self.assertNotIn("((0, 3), (3, 6), (6, 9), (9, 12))", reference)
+        self.assertNotIn("overlay=enable='between(t,0,3)'", reference)
+
     def test_explicit_pronunciation_terms_remain_authoritative(self):
         self.assertEqual(module.speak("30B級です", {"30B": "サーティービー"}), "サーティービー級です")
 
