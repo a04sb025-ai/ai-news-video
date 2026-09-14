@@ -222,6 +222,7 @@ with tempfile.TemporaryDirectory() as directory:
     # All downstream visuals, subtitles and QA must use the measured narration
     # timing rather than the earlier character-count estimate.
     DURATION = float(story["script"][-1]["end"])
+    story["expected_duration_seconds"] = round(DURATION, 2)
     OPENING_END = min(3.0, float(story["script"][0]["end"]))
     THUMBNAIL_RENDER_SECONDS = min(0.5, max(0.1, OPENING_END / 2))
     story_path.write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n")
