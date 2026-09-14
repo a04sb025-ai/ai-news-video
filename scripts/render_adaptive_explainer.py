@@ -44,15 +44,13 @@ OPENING_LAYOUT_CONTRACT = "split-text-visual-v1"
 BODY_LAYOUT_CONTRACT = "youtube-shorts-ui-safe-v2"
 THUMBNAIL_RENDER_SECONDS = min(0.5, max(0.1, OPENING_END / 2))
 
-# Open JTalk naturally adds utterance-final prosody. Rendering every page as a
-# separate utterance can make that cadence sound like a brief slow-motion dip at
-# scene boundaries. Keep scene-timed synthesis, but make the correction gentle:
-# compact only the final voiced window and never apply a second speed-up to it.
-SCENE_TAIL_GUARD_SECONDS = 0.70
-SCENE_TAIL_GUARD_TEMPO = 1.05
-SCENE_TAIL_GUARD_MIN_RAW_SECONDS = 1.60
-SCENE_FIT_MARGIN_SECONDS = 0.08
-MAX_LOCAL_SPEECH_TEMPO = 1.08
+# Narration is the timing source of truth. Synthesize every scene at one fixed
+# speaking rate, measure the actual WAV, then keep the current visual on screen
+# until that narration has finished. Never time-stretch speech to fit a guessed
+# scene duration; a short natural pause is added after speech before the cut.
+OPEN_JTALK_RATE = 1.10
+SCENE_END_PAUSE_SECONDS = 0.18
+MIN_OPENING_SECONDS = 3.0
 
 # YouTube Shorts overlays are not part of the encoded video, so critical copy must
 # stay away from the app chrome. These values are deliberately conservative for
@@ -194,77 +192,40 @@ with tempfile.TemporaryDirectory() as directory:
     tmp = Path(directory)
     wav = tmp / "voice.wav"
     ass = tmp / "adaptive-explainer.ass"
-    cue_wavs, cue_durations = [], []
-    cue_tempos, cue_head_tempos, cue_tail_tempos = [], [], []
-    tail_guarded_scene_numbers = []
+    cue_wavs, cue_durations, cue_raw_durations = [], [], []
+    cursor = 0.0
 
     for index, cue in enumerate(story["script"]):
         narration = tmp / f"narration-{index}.txt"
         raw_wav = tmp / f"voice-{index}-raw.wav"
-        fitted_wav = tmp / f"voice-{index}.wav"
         narration.write_text(cue["narration"])
         subprocess.run([
-            "open_jtalk", "-x", str(dictionary), "-m", str(voice), "-r", "1.06",
+            "open_jtalk", "-x", str(dictionary), "-m", str(voice), "-r", str(OPEN_JTALK_RATE),
             "-ow", str(raw_wav), str(narration),
         ], check=True)
         with wave.open(str(raw_wav)) as audio:
             raw_duration = audio.getnframes() / audio.getframerate()
-        slot = float(cue["end"]) - float(cue["start"])
-        target_duration = max(slot - SCENE_FIT_MARGIN_SECONDS, .8)
-        is_non_final_scene = index < len(story["script"]) - 1
-        use_tail_guard = is_non_final_scene and raw_duration >= SCENE_TAIL_GUARD_MIN_RAW_SECONDS
 
-        if use_tail_guard:
-            tail_seconds = min(SCENE_TAIL_GUARD_SECONDS, raw_duration * 0.30)
-            tail_start = raw_duration - tail_seconds
-            tail_tempo = SCENE_TAIL_GUARD_TEMPO
-            tail_after = tail_seconds / tail_tempo
-            available_head = max(target_duration - tail_after, .1)
-            head_tempo = max(1.0, tail_start / available_head)
-            if head_tempo > MAX_LOCAL_SPEECH_TEMPO:
-                raise SystemExit(
-                    f"Narration for scene {index + 1} would require {head_tempo:.2f}x speech; "
-                    "increase scene duration or split the explanation instead of rushing it"
-                )
-            filter_complex = (
-                f"[0:a]asplit=2[headsrc][tailsrc];"
-                f"[headsrc]atrim=start=0:end={tail_start:.4f},asetpts=PTS-STARTPTS,"
-                f"atempo={head_tempo:.4f}[head];"
-                f"[tailsrc]atrim=start={tail_start:.4f},asetpts=PTS-STARTPTS,"
-                f"atempo={tail_tempo:.4f}[tail];"
-                f"[head][tail]concat=n=2:v=0:a=1[joined];"
-                f"[joined]apad=pad_dur={slot:.4f},atrim=duration={slot:.4f}[out]"
-            )
-            subprocess.run([
-                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw_wav),
-                "-filter_complex", filter_complex, "-map", "[out]", str(fitted_wav),
-            ], check=True)
-            tail_guarded_scene_numbers.append(index + 1)
-            scene_tempo = max(head_tempo, tail_tempo)
-        else:
-            head_tempo = max(1.0, raw_duration / target_duration)
-            tail_tempo = 1.0
-            if head_tempo > MAX_LOCAL_SPEECH_TEMPO:
-                raise SystemExit(
-                    f"Narration for scene {index + 1} would require {head_tempo:.2f}x speech; "
-                    "increase scene duration or split the explanation instead of rushing it"
-                )
-            filters = [
-                f"atempo={head_tempo:.4f}",
-                f"apad=pad_dur={slot}",
-                f"atrim=duration={slot}",
-            ]
-            subprocess.run([
-                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw_wav),
-                "-af", ",".join(filters), str(fitted_wav),
-            ], check=True)
-            scene_tempo = head_tempo
+        scene_duration = raw_duration + SCENE_END_PAUSE_SECONDS
+        if index == 0:
+            scene_duration = max(scene_duration, MIN_OPENING_SECONDS)
+        start = round(cursor, 4)
+        end = round(cursor + scene_duration, 4)
+        cue["start"] = start
+        cue["end"] = end
+        cursor = end
 
-        cue_wavs.append(fitted_wav)
-        cue_durations.append(slot)
-        cue_tempos.append(round(scene_tempo, 4))
-        cue_head_tempos.append(round(head_tempo, 4))
-        cue_tail_tempos.append(round(tail_tempo, 4))
+        cue_wavs.append(raw_wav)
+        cue_durations.append(round(scene_duration, 4))
+        cue_raw_durations.append(round(raw_duration, 4))
+
+    # All downstream visuals, subtitles and QA must use the measured narration
+    # timing rather than the earlier character-count estimate.
+    DURATION = float(story["script"][-1]["end"])
+    story["expected_duration_seconds"] = round(DURATION, 2)
+    OPENING_END = min(3.0, float(story["script"][0]["end"]))
+    THUMBNAIL_RENDER_SECONDS = min(0.5, max(0.1, OPENING_END / 2))
+    story_path.write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n")
 
     audio_inputs = [value for cue_wav in cue_wavs for value in ("-i", str(cue_wav))]
     audio_filter = "".join(
@@ -377,15 +338,12 @@ manifest = {
     "content_hash": story.get("content_hash"),
     "page_count": len(story.get("script", [])) - 1,
     "duration_seconds": DURATION,
-    "audio_pipeline": "scene-timed-open-jtalk-balanced-v2",
-    "audio_scene_tempos": cue_tempos,
-    "audio_scene_head_tempos": cue_head_tempos,
-    "audio_scene_tail_tempos": cue_tail_tempos,
-    "audio_tail_guard_seconds": SCENE_TAIL_GUARD_SECONDS,
-    "audio_tail_guard_tempo": SCENE_TAIL_GUARD_TEMPO,
-    "audio_fit_margin_seconds": SCENE_FIT_MARGIN_SECONDS,
-    "audio_max_local_tempo": MAX_LOCAL_SPEECH_TEMPO,
-    "audio_tail_guard_scene_numbers": tail_guarded_scene_numbers,
+    "audio_pipeline": "fixed-rate-open-jtalk-audio-led-v1",
+    "audio_tts_rate": OPEN_JTALK_RATE,
+    "audio_scene_raw_durations": cue_raw_durations,
+    "audio_scene_durations": cue_durations,
+    "audio_scene_end_pause_seconds": SCENE_END_PAUSE_SECONDS,
+    "audio_tempo_adjustment": False,
     "full_narration_subtitles": True,
     "subtitle_font_size_px": 48,
     "opening_subtitle_font_size_px": 46,
