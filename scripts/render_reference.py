@@ -199,6 +199,8 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 events.append(vector(start, end, rect_path(215, 980, 420, 18), "C6B5E8", layer=5))
                 events.append(dialogue(start, end, "Label", "NEW", r"\pos(850,1085)\fs34\1c&H6D59C7&", 5))
 
+            # A softly irregular, hand-drawn speech balloon. The canonical Mozo
+            # PNG is composited later, above this card, from frame zero to 2.967s.
             events.append(vector(start, end, "m 405 1410 b 405 1365 445 1345 500 1352 l 885 1352 b 940 1355 965 1390 958 1440 l 950 1490 b 940 1535 900 1555 845 1548 l 530 1548 b 475 1550 430 1525 425 1482 l 370 1530 395 1460 b 390 1440 395 1420 405 1410", "FFF4D6", layer=6))
             events.append(dialogue(start, end, "Label", template["bubble"], r"\pos(670,1460)\fs46", 7))
             if not USE_MOZO_OPENING_ASSET:
