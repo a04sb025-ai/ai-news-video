@@ -67,14 +67,19 @@ class AdaptiveExplainerTest(unittest.TestCase):
         self.assertIn('"opening_headline_target_chars_per_line": 9', renderer)
         self.assertIn('"subtitle_font_size_px": 48', renderer)
 
-    def test_renderer_keeps_scene_timing_and_guards_tail_prosody(self):
+    def test_renderer_keeps_scene_timing_without_double_speedup(self):
         renderer = (ROOT / "scripts/render_adaptive_explainer.py").read_text()
         self.assertIn('raw_wav = tmp / f"voice-{index}-raw.wav"', renderer)
-        self.assertIn("SCENE_TAIL_GUARD_SECONDS = 0.85", renderer)
-        self.assertIn("SCENE_TAIL_GUARD_TEMPO = 1.10", renderer)
+        self.assertIn("SCENE_TAIL_GUARD_SECONDS = 0.70", renderer)
+        self.assertIn("SCENE_TAIL_GUARD_TEMPO = 1.05", renderer)
+        self.assertIn("SCENE_FIT_MARGIN_SECONDS = 0.08", renderer)
+        self.assertIn("MAX_LOCAL_SPEECH_TEMPO = 1.08", renderer)
         self.assertIn("is_non_final_scene = index < len(story[\"script\"]) - 1", renderer)
-        self.assertIn("[head][tail]concat=n=2:v=0:a=1", renderer)
-        self.assertIn('"audio_pipeline": "scene-timed-open-jtalk-tailguard-v1"', renderer)
+        self.assertIn("[head][tail]concat=n=2:v=0:a=1[joined]", renderer)
+        self.assertNotIn("[head][tail]concat=n=2:v=0:a=1,atempo=", renderer)
+        self.assertIn('"audio_pipeline": "scene-timed-open-jtalk-balanced-v2"', renderer)
+        self.assertIn('"audio_scene_head_tempos": cue_head_tempos', renderer)
+        self.assertIn('"audio_scene_tail_tempos": cue_tail_tempos', renderer)
         self.assertIn("audio_filter +=", renderer)
 
     def test_explicit_pronunciation_terms_remain_authoritative(self):
