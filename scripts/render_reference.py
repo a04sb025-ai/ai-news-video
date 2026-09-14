@@ -24,7 +24,10 @@ if not dictionary or not voice:
 
 WIDTH, HEIGHT = 1080, 1920
 FPS = 30
-DURATION = story["script"][-1]["end"]
+DURATION = float(story["script"][-1]["end"])
+OPEN_JTALK_RATE = 1.10
+SCENE_END_PAUSE_SECONDS = 0.18
+MIN_OPENING_SECONDS = 3.0
 SAFE_OPENING = os.environ.get("OPENING_SAFE_MODE") == "1"
 PALETTE = ["18213A", "122E3A", "25304A", "111827"]
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,7 +82,7 @@ def rect_path(x, y, width, height):
 
 
 output.parent.mkdir(parents=True, exist_ok=True)
-# Never expose an MP4 whose moov atom is still being written.  QA and uploaders only
+# Never expose an MP4 whose moov atom is still being written. QA and uploaders only
 # see ``output`` after ffmpeg has closed, verified, and atomically renamed the file.
 temporary_output = output.with_name(f".{output.stem}.rendering{output.suffix}")
 temporary_output.unlink(missing_ok=True)
@@ -89,31 +92,41 @@ with tempfile.TemporaryDirectory() as directory:
     ass = tmp / "motion.ass"
     cue_wavs = []
     cue_durations = []
+    cue_raw_durations = []
+    cursor = 0.0
+
+    # Speech timing drives scene timing. Every cue is synthesized once at a fixed
+    # rate, measured, and left untouched. Video waits for the narration to finish
+    # and cuts after a short pause instead of speeding speech up to fit a guess.
     for index, cue in enumerate(story["script"]):
         narration = tmp / f"narration-{index}.txt"
         raw_wav = tmp / f"voice-{index}-raw.wav"
-        fitted_wav = tmp / f"voice-{index}.wav"
         narration.write_text(cue["narration"])
         subprocess.run(
-            ["open_jtalk", "-x", str(dictionary), "-m", str(voice), "-r", "1.18", "-ow", str(raw_wav), str(narration)],
+            ["open_jtalk", "-x", str(dictionary), "-m", str(voice), "-r", str(OPEN_JTALK_RATE), "-ow", str(raw_wav), str(narration)],
             check=True,
         )
         with wave.open(str(raw_wav)) as audio:
             raw_duration = audio.getnframes() / audio.getframerate()
-        slot = cue["end"] - cue["start"]
-        speed = max(1.0, raw_duration / max(slot - .12, .5))
-        filters = []
-        while speed > 2:
-            filters.append("atempo=2")
-            speed /= 2
-        filters.append(f"atempo={speed:.4f}")
-        filters.extend((f"apad=pad_dur={slot}", f"atrim=duration={slot}"))
-        subprocess.run(
-            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw_wav),
-             "-af", ",".join(filters), str(fitted_wav)], check=True,
-        )
-        cue_wavs.append(fitted_wav)
-        cue_durations.append(slot)
+
+        scene_duration = raw_duration + SCENE_END_PAUSE_SECONDS
+        if index == 0:
+            scene_duration = max(scene_duration, MIN_OPENING_SECONDS)
+        start = round(cursor, 4)
+        end = round(cursor + scene_duration, 4)
+        cue["start"] = start
+        cue["end"] = end
+        cursor = end
+
+        cue_wavs.append(raw_wav)
+        cue_durations.append(round(scene_duration, 4))
+        cue_raw_durations.append(round(raw_duration, 4))
+
+    DURATION = float(story["script"][-1]["end"])
+    # Downstream QA uses this same file. Persist the measured scene boundaries so
+    # frame extraction and subtitle checks inspect the frames that were rendered.
+    story_path.write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n")
+
     audio_inputs = [value for cue_wav in cue_wavs for value in ("-i", str(cue_wav))]
     audio_filter = "".join(f"[{i}:a]apad,atrim=duration={duration}[a{i}];" for i, duration in enumerate(cue_durations))
     audio_filter += "".join(f"[a{i}]" for i in range(len(cue_wavs))) + f"concat=n={len(cue_wavs)}:v=0:a=1[out]"
@@ -160,17 +173,12 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 events.append(vector(start, end, rect_path(0, 720, WIDTH, 820), "E8EDF7", layer=1))
                 events.append(vector(start, end, rect_path(0, 1540, WIDTH, 195), "25304A", layer=1))
             events.append(dialogue(start, end, "Eyebrow", cue.get("label", "AI NEWS"), layer=3))
-            # The opening is a completed thumbnail. Every item below exists for the
-            # entire cue; never add fades or delayed starts to a major element.
             panel_alpha = "&H08&" if SAFE_OPENING else "&H28&"
-            # Opening frames double as thumbnails. Keep every major element fully
-            # opaque from frame zero through the final opening frame (2.967s).
             events.append(vector(start, end, rect_path(42, 150, 996, 510), "101528", rf"\alpha{panel_alpha}", 2))
             events.append(vector(start, end, rect_path(70, 195, 16, 350), "00A5FF", layer=3))
             events.append(dialogue(start, end, "Headline", cue["caption"], r"\an7\pos(112,235)", 4))
 
             template = story.get("visual_template", {"key": "announcement", "bubble": "何が変わる？"})
-            # Original, video-native cards: no website screenshots or copied UI.
             events.append(vector(start, end, rect_path(82, 700, 916, 570), "EDEAF7", r"\alpha&H08&", 3))
             if template["key"] == "mechanism":
                 for x, width in ((145, 190), (445, 190), (745, 190)):
@@ -191,13 +199,9 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 events.append(vector(start, end, rect_path(215, 980, 420, 18), "C6B5E8", layer=5))
                 events.append(dialogue(start, end, "Label", "NEW", r"\pos(850,1085)\fs34\1c&H6D59C7&", 5))
 
-            # A softly irregular, hand-drawn speech balloon. The canonical Mozo
-            # PNG is composited later, above this card, from frame zero to 2.967s.
             events.append(vector(start, end, "m 405 1410 b 405 1365 445 1345 500 1352 l 885 1352 b 940 1355 965 1390 958 1440 l 950 1490 b 940 1535 900 1555 845 1548 l 530 1548 b 475 1550 430 1525 425 1482 l 370 1530 395 1460 b 390 1440 395 1420 405 1410", "FFF4D6", layer=6))
             events.append(dialogue(start, end, "Label", template["bubble"], r"\pos(670,1460)\fs46", 7))
             if not USE_MOZO_OPENING_ASSET:
-                # Technical-only fallback: keep the layout renderable, but never
-                # claim that this neutral marker is the official character.
                 events.append(vector(start, end, "m 95 1590 b 80 1460 145 1370 245 1385 b 350 1400 390 1510 360 1650 b 330 1770 125 1780 95 1590", "F8F5ED", layer=6))
                 events.append(dialogue(start, end, "Small", "もぞ見本を読み込めません", r"\pos(245,1810)\fs27\1c&HFFF4D6&", 7))
         elif index == 1:
@@ -223,7 +227,6 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             elif not USE_STORY_IMAGES:
                 events.append(vector(start, end, rect_path(100, 440, 405, 610), "FFF3C4", r"\fad(100,100)", 2))
                 events.append(vector(start + .20, end, rect_path(575, 440, 405, 610), "C9F7FF", r"\fad(100,100)", 2))
-                # Simple book and shield symbols, drawn without external assets.
                 events.append(vector(start, end, "m 190 590 l 300 565 300 800 190 825 m 300 565 l 410 590 410 825 300 800", "F2B84B", r"\fad(100,100)", 3))
                 events.append(vector(start + .20, end, "m 775 555 l 900 605 875 785 b 865 850 815 890 775 910 b 735 890 685 850 675 785 l 650 605", "58D6FF", r"\fad(100,100)", 3))
                 events.append(dialogue(start, end, "Label", "学 習", r"\pos(300,940)\fs44\fad(100,100)", 4))
@@ -292,8 +295,6 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     ])
     try:
         subprocess.run(command, check=True)
-        # A complete decode before publication catches truncated tails and invalid
-        # packets while the temporary file can still be safely discarded.
         subprocess.run(
             ["ffmpeg", "-hide_banner", "-v", "error", "-xerror", "-i", str(temporary_output), "-map", "0", "-f", "null", "-"],
             check=True,
@@ -301,11 +302,21 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         temporary_output.replace(output)
     finally:
         temporary_output.unlink(missing_ok=True)
-manifest = {"content_hash": story.get("content_hash"), "used_generated_images": USE_STORY_IMAGES,
-            "used_mozo_opening_asset": USE_MOZO_OPENING_ASSET,
-            "mozo_opening_asset": str(MOZO_OPENING_ASSET) if USE_MOZO_OPENING_ASSET else None,
-            "mozo_opening_asset_sha256": hashlib.sha256(MOZO_OPENING_ASSET.read_bytes()).hexdigest() if USE_MOZO_OPENING_ASSET else None,
-            "image_directory": str(ASSET_DIR),
-            "images": [str(image) for image in STORY_IMAGES] if USE_STORY_IMAGES else []}
+manifest = {
+    "content_hash": story.get("content_hash"),
+    "audio_pipeline": "fixed-rate-open-jtalk-audio-led-v1",
+    "audio_tts_rate": OPEN_JTALK_RATE,
+    "audio_scene_raw_durations": cue_raw_durations,
+    "audio_scene_durations": cue_durations,
+    "audio_scene_end_pause_seconds": SCENE_END_PAUSE_SECONDS,
+    "audio_tempo_adjustment": False,
+    "duration_seconds": DURATION,
+    "used_generated_images": USE_STORY_IMAGES,
+    "used_mozo_opening_asset": USE_MOZO_OPENING_ASSET,
+    "mozo_opening_asset": str(MOZO_OPENING_ASSET) if USE_MOZO_OPENING_ASSET else None,
+    "mozo_opening_asset_sha256": hashlib.sha256(MOZO_OPENING_ASSET.read_bytes()).hexdigest() if USE_MOZO_OPENING_ASSET else None,
+    "image_directory": str(ASSET_DIR),
+    "images": [str(image) for image in STORY_IMAGES] if USE_STORY_IMAGES else [],
+}
 output.with_suffix(".render.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
 print(output)
