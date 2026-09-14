@@ -67,20 +67,19 @@ class AdaptiveExplainerTest(unittest.TestCase):
         self.assertIn('"opening_headline_target_chars_per_line": 9', renderer)
         self.assertIn('"subtitle_font_size_px": 48', renderer)
 
-    def test_renderer_keeps_scene_timing_without_double_speedup(self):
-        renderer = (ROOT / "scripts/render_adaptive_explainer.py").read_text()
-        self.assertIn('raw_wav = tmp / f"voice-{index}-raw.wav"', renderer)
-        self.assertIn("SCENE_TAIL_GUARD_SECONDS = 0.70", renderer)
-        self.assertIn("SCENE_TAIL_GUARD_TEMPO = 1.05", renderer)
-        self.assertIn("SCENE_FIT_MARGIN_SECONDS = 0.08", renderer)
-        self.assertIn("MAX_LOCAL_SPEECH_TEMPO = 1.08", renderer)
-        self.assertIn("is_non_final_scene = index < len(story[\"script\"]) - 1", renderer)
-        self.assertIn("[head][tail]concat=n=2:v=0:a=1[joined]", renderer)
-        self.assertNotIn("[head][tail]concat=n=2:v=0:a=1,atempo=", renderer)
-        self.assertIn('"audio_pipeline": "scene-timed-open-jtalk-balanced-v2"', renderer)
-        self.assertIn('"audio_scene_head_tempos": cue_head_tempos', renderer)
-        self.assertIn('"audio_scene_tail_tempos": cue_tail_tempos', renderer)
-        self.assertIn("audio_filter +=", renderer)
+    def test_renderers_use_fixed_speed_audio_led_timing(self):
+        for filename in ("render_adaptive_explainer.py", "render_reference.py"):
+            with self.subTest(renderer=filename):
+                renderer = (ROOT / "scripts" / filename).read_text()
+                self.assertIn("OPEN_JTALK_RATE = 1.10", renderer)
+                self.assertIn("SCENE_END_PAUSE_SECONDS = 0.18", renderer)
+                self.assertIn('cue["start"] = start', renderer)
+                self.assertIn('cue["end"] = end', renderer)
+                self.assertIn("cue_wavs.append(raw_wav)", renderer)
+                self.assertIn("story_path.write_text", renderer)
+                self.assertIn('"audio_pipeline": "fixed-rate-open-jtalk-audio-led-v1"', renderer)
+                self.assertIn('"audio_tempo_adjustment": False', renderer)
+                self.assertNotIn("atempo=", renderer)
 
     def test_explicit_pronunciation_terms_remain_authoritative(self):
         self.assertEqual(module.speak("30B級です", {"30B": "サーティービー"}), "サーティービー級です")
