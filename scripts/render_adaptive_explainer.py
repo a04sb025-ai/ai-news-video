@@ -211,9 +211,12 @@ with tempfile.TemporaryDirectory() as directory:
             probe_durations.append(audio.getnframes() / audio.getframerate())
 
     # The only narration used in the finished video is one continuous synthesis.
+    # Open JTalk's command-line reader treats line breaks as separate input units,
+    # so keep the complete script on one physical line to guarantee every cue is
+    # synthesized in the one published utterance stream.
     narration = tmp / "narration.txt"
     narration_wav = tmp / "voice-single-pass.wav"
-    narration.write_text("\n".join(cue["narration"].strip() for cue in story["script"]) + "\n")
+    narration.write_text(" ".join(cue["narration"].strip() for cue in story["script"]) + "\n")
     subprocess.run([
         "open_jtalk", "-x", str(dictionary), "-m", str(voice), "-r", str(OPEN_JTALK_RATE),
         "-ow", str(narration_wav), str(narration),
