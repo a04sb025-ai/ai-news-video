@@ -44,12 +44,14 @@ OPENING_LAYOUT_CONTRACT = "split-text-visual-v1"
 BODY_LAYOUT_CONTRACT = "youtube-shorts-ui-safe-v2"
 THUMBNAIL_RENDER_SECONDS = min(0.5, max(0.1, OPENING_END / 2))
 
-# Narration is the timing source of truth. Synthesize every scene at one fixed
-# speaking rate, measure the actual WAV, then keep the current visual on screen
-# until that narration has finished. Never time-stretch speech to fit a guessed
-# scene duration; a short natural pause is added after speech before the cut.
+# The final audible narration is synthesized in one continuous Open JTalk pass.
+# Independent per-scene synthesis repeatedly enters utterance-final prosody and
+# can make the last syllables of each scene sound as if they drop into slow motion.
+# Scene-only probe WAVs are used strictly as timing weights; they are never mixed
+# into the published audio. The video's total duration follows the measured final
+# single-pass WAV so there can be no late-video silence caused by a guessed runtime.
 OPEN_JTALK_RATE = 1.10
-SCENE_END_PAUSE_SECONDS = 0.18
+FINAL_END_PAUSE_SECONDS = 0.18
 MIN_OPENING_SECONDS = 3.0
 
 # YouTube Shorts overlays are not part of the encoded video, so critical copy must
@@ -192,49 +194,74 @@ with tempfile.TemporaryDirectory() as directory:
     tmp = Path(directory)
     wav = tmp / "voice.wav"
     ass = tmp / "adaptive-explainer.ass"
-    cue_wavs, cue_durations, cue_raw_durations = [], [], []
-    cursor = 0.0
+    probe_durations = []
 
+    # Probe each cue only to estimate relative visual boundaries. These files are
+    # intentionally never concatenated or published, because their independent
+    # utterance endings are the source of the recurring slow-motion effect.
     for index, cue in enumerate(story["script"]):
-        narration = tmp / f"narration-{index}.txt"
-        raw_wav = tmp / f"voice-{index}-raw.wav"
-        narration.write_text(cue["narration"])
+        probe_text = tmp / f"probe-{index}.txt"
+        probe_wav = tmp / f"probe-{index}.wav"
+        probe_text.write_text(cue["narration"].strip() + "\n")
         subprocess.run([
             "open_jtalk", "-x", str(dictionary), "-m", str(voice), "-r", str(OPEN_JTALK_RATE),
-            "-ow", str(raw_wav), str(narration),
+            "-ow", str(probe_wav), str(probe_text),
         ], check=True)
-        with wave.open(str(raw_wav)) as audio:
-            raw_duration = audio.getnframes() / audio.getframerate()
+        with wave.open(str(probe_wav)) as audio:
+            probe_durations.append(audio.getnframes() / audio.getframerate())
 
-        scene_duration = raw_duration + SCENE_END_PAUSE_SECONDS
-        if index == 0:
-            scene_duration = max(scene_duration, MIN_OPENING_SECONDS)
+    # The only narration used in the finished video is one continuous synthesis.
+    narration = tmp / "narration.txt"
+    narration_wav = tmp / "voice-single-pass.wav"
+    narration.write_text("\n".join(cue["narration"].strip() for cue in story["script"]) + "\n")
+    subprocess.run([
+        "open_jtalk", "-x", str(dictionary), "-m", str(voice), "-r", str(OPEN_JTALK_RATE),
+        "-ow", str(narration_wav), str(narration),
+    ], check=True)
+    with wave.open(str(narration_wav)) as audio:
+        narration_duration = audio.getnframes() / audio.getframerate()
+
+    probe_total = sum(probe_durations)
+    if probe_total <= 0 or narration_duration <= 0:
+        raise SystemExit("Open JTalk produced an empty narration")
+
+    # Scale the probe timing weights onto the measured single-pass narration.
+    # This keeps visuals close to sentence boundaries without ever publishing the
+    # probe audio. The final cue absorbs a tiny end pause; all speech stays 1.10x.
+    scale = narration_duration / probe_total
+    scene_durations = [duration * scale for duration in probe_durations]
+    if scene_durations and scene_durations[0] < MIN_OPENING_SECONDS and len(scene_durations) > 1:
+        needed = MIN_OPENING_SECONDS - scene_durations[0]
+        remaining = sum(scene_durations[1:])
+        if remaining > needed:
+            scene_durations[0] = MIN_OPENING_SECONDS
+            factor = (remaining - needed) / remaining
+            scene_durations[1:] = [duration * factor for duration in scene_durations[1:]]
+
+    cursor = 0.0
+    cue_durations = []
+    for index, (cue, scene_duration) in enumerate(zip(story["script"], scene_durations)):
         start = round(cursor, 4)
-        end = round(cursor + scene_duration, 4)
+        cursor += scene_duration
+        end = round(cursor, 4)
+        if index == len(story["script"]) - 1:
+            end = round(narration_duration + FINAL_END_PAUSE_SECONDS, 4)
+            cursor = end
         cue["start"] = start
         cue["end"] = end
-        cursor = end
+        cue_durations.append(round(end - start, 4))
 
-        cue_wavs.append(raw_wav)
-        cue_durations.append(round(scene_duration, 4))
-        cue_raw_durations.append(round(raw_duration, 4))
-
-    # All downstream visuals, subtitles and QA must use the measured narration
-    # timing rather than the earlier character-count estimate.
-    DURATION = float(story["script"][-1]["end"])
+    DURATION = round(narration_duration + FINAL_END_PAUSE_SECONDS, 4)
     story["expected_duration_seconds"] = round(DURATION, 2)
     OPENING_END = min(3.0, float(story["script"][0]["end"]))
     THUMBNAIL_RENDER_SECONDS = min(0.5, max(0.1, OPENING_END / 2))
     story_path.write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n")
 
-    audio_inputs = [value for cue_wav in cue_wavs for value in ("-i", str(cue_wav))]
-    audio_filter = "".join(
-        f"[{i}:a]apad,atrim=duration={duration}[a{i}];" for i, duration in enumerate(cue_durations)
-    )
-    audio_filter += "".join(f"[a{i}]" for i in range(len(cue_wavs))) + f"concat=n={len(cue_wavs)}:v=0:a=1[out]"
+    # Copy the single-pass narration unchanged and add only final padding. There is
+    # deliberately no atempo and no concatenation of per-scene speech.
     subprocess.run([
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *audio_inputs,
-        "-filter_complex", audio_filter, "-map", "[out]", str(wav),
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(narration_wav),
+        "-af", f"apad=pad_dur={FINAL_END_PAUSE_SECONDS},atrim=duration={DURATION}", str(wav),
     ], check=True)
 
     header = f"""[Script Info]
@@ -338,11 +365,14 @@ manifest = {
     "content_hash": story.get("content_hash"),
     "page_count": len(story.get("script", [])) - 1,
     "duration_seconds": DURATION,
-    "audio_pipeline": "fixed-rate-open-jtalk-audio-led-v1",
+    "audio_pipeline": "single-pass-open-jtalk-audio-led-v2",
     "audio_tts_rate": OPEN_JTALK_RATE,
-    "audio_scene_raw_durations": cue_raw_durations,
+    "audio_single_pass": True,
+    "audio_single_pass_duration_seconds": round(narration_duration, 4),
+    "audio_alignment_source": "probe-duration-proportional",
+    "audio_probe_durations": [round(duration, 4) for duration in probe_durations],
     "audio_scene_durations": cue_durations,
-    "audio_scene_end_pause_seconds": SCENE_END_PAUSE_SECONDS,
+    "audio_final_end_pause_seconds": FINAL_END_PAUSE_SECONDS,
     "audio_tempo_adjustment": False,
     "full_narration_subtitles": True,
     "subtitle_font_size_px": 48,
