@@ -12,6 +12,7 @@ import wave
 from pathlib import Path
 
 from audio_timing import detect_silence_regions, ensure_terminal_pause, snap_scene_boundaries
+from narration_tts import synthesize_published_narration
 
 story_path, output = map(Path, sys.argv[1:3])
 story = json.loads(story_path.read_text())
@@ -46,11 +47,10 @@ OPENING_LAYOUT_CONTRACT = "split-text-visual-v1"
 BODY_LAYOUT_CONTRACT = "youtube-shorts-ui-safe-v2"
 THUMBNAIL_RENDER_SECONDS = min(0.5, max(0.1, OPENING_END / 2))
 
-# The final audible narration is synthesized in one continuous Open JTalk pass.
-# Independent per-scene synthesis repeatedly enters utterance-final prosody and
-# can make the last syllables of each scene sound as if they drop into slow motion.
-# Scene-only probe WAVs are used strictly as rough timing anchors; scene switches
-# are then snapped to measured pauses in the one published WAV itself.
+# Published production narration uses one natural TTS pass. Open JTalk remains
+# available for deterministic offline CI and scene-only timing probes, but its
+# local phrase-final duration artifacts are no longer allowed into production
+# whenever OPENAI_API_KEY is configured.
 OPEN_JTALK_RATE = 1.10
 FINAL_END_PAUSE_SECONDS = 0.18
 
@@ -210,28 +210,30 @@ with tempfile.TemporaryDirectory() as directory:
         with wave.open(str(probe_wav)) as audio:
             probe_durations.append(audio.getnframes() / audio.getframerate())
 
-    # Keep the entire published narration on one physical line so Open JTalk never
-    # resets at scene boundaries. Terminal punctuation supplies a natural short
-    # phrase pause, and the actual pause in this final WAV drives visual timing.
+    # Synthesize the only narration that reaches the published video in one pass.
+    # Production uses natural TTS when the API key is present. Offline CI uses
+    # Open JTalk so the render suite stays deterministic and network-free.
     narration = tmp / "narration.txt"
     narration_wav = tmp / "voice-single-pass.wav"
     narration_chunks = [ensure_terminal_pause(cue["narration"]) for cue in story["script"]]
-    narration.write_text(" ".join(narration_chunks) + "\n")
-    subprocess.run([
-        "open_jtalk", "-x", str(dictionary), "-m", str(voice), "-r", str(OPEN_JTALK_RATE),
-        "-ow", str(narration_wav), str(narration),
-    ], check=True)
-    with wave.open(str(narration_wav)) as audio:
-        narration_duration = audio.getnframes() / audio.getframerate()
+    narration_text = " ".join(narration_chunks)
+    narration.write_text(narration_text + "\n")
+    tts_metadata = synthesize_published_narration(
+        narration_text,
+        narration_wav,
+        dictionary=dictionary,
+        voice=voice,
+        open_jtalk_rate=OPEN_JTALK_RATE,
+    )
+    narration_duration = float(tts_metadata["duration_seconds"])
 
     probe_total = sum(probe_durations)
     if probe_total <= 0 or narration_duration <= 0:
-        raise SystemExit("Open JTalk produced an empty narration")
+        raise SystemExit("TTS produced an empty narration")
 
     # Use rough probe proportions only to identify the expected neighborhood, then
     # snap each scene boundary to a real low-energy pause measured in the final WAV.
-    # This avoids switching images mid-sentence while keeping the published speech
-    # untouched at the fixed 1.10x Open JTalk rate.
+    # The published speech itself is never stretched or compressed after synthesis.
     silence_regions = detect_silence_regions(narration_wav)
     scene_boundaries, boundary_alignment = snap_scene_boundaries(
         probe_durations,
@@ -361,8 +363,12 @@ manifest = {
     "content_hash": story.get("content_hash"),
     "page_count": len(story.get("script", [])) - 1,
     "duration_seconds": DURATION,
-    "audio_pipeline": "single-pass-open-jtalk-audio-led-v3",
-    "audio_tts_rate": OPEN_JTALK_RATE,
+    "audio_pipeline": "single-pass-natural-tts-audio-led-v4",
+    "audio_tts_provider": tts_metadata["provider"],
+    "audio_tts_model": tts_metadata["model"],
+    "audio_tts_voice": tts_metadata["voice"],
+    "audio_tts_rate": tts_metadata["speed"],
+    "audio_open_jtalk_probe_rate": OPEN_JTALK_RATE,
     "audio_single_pass": True,
     "audio_single_pass_duration_seconds": round(narration_duration, 4),
     "audio_alignment_source": "single-pass-wav-silence-snapped",
