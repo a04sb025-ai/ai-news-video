@@ -11,6 +11,8 @@ import tempfile
 import wave
 from pathlib import Path
 
+from audio_timing import detect_silence_regions, ensure_terminal_pause, snap_scene_boundaries
+
 story_path, output = map(Path, sys.argv[1:3])
 story = json.loads(story_path.read_text())
 if story.get("explanation_contract") != "adaptive-pages-v1":
@@ -47,12 +49,10 @@ THUMBNAIL_RENDER_SECONDS = min(0.5, max(0.1, OPENING_END / 2))
 # The final audible narration is synthesized in one continuous Open JTalk pass.
 # Independent per-scene synthesis repeatedly enters utterance-final prosody and
 # can make the last syllables of each scene sound as if they drop into slow motion.
-# Scene-only probe WAVs are used strictly as timing weights; they are never mixed
-# into the published audio. The video's total duration follows the measured final
-# single-pass WAV so there can be no late-video silence caused by a guessed runtime.
+# Scene-only probe WAVs are used strictly as rough timing anchors; scene switches
+# are then snapped to measured pauses in the one published WAV itself.
 OPEN_JTALK_RATE = 1.10
 FINAL_END_PAUSE_SECONDS = 0.18
-MIN_OPENING_SECONDS = 3.0
 
 # YouTube Shorts overlays are not part of the encoded video, so critical copy must
 # stay away from the app chrome. These values are deliberately conservative for
@@ -196,13 +196,13 @@ with tempfile.TemporaryDirectory() as directory:
     ass = tmp / "adaptive-explainer.ass"
     probe_durations = []
 
-    # Probe each cue only to estimate relative visual boundaries. These files are
-    # intentionally never concatenated or published, because their independent
-    # utterance endings are the source of the recurring slow-motion effect.
+    # Probe each cue only to estimate where its matching pause should occur. These
+    # files are never concatenated or published; only the one continuous WAV below
+    # is audible in the finished video.
     for index, cue in enumerate(story["script"]):
         probe_text = tmp / f"probe-{index}.txt"
         probe_wav = tmp / f"probe-{index}.wav"
-        probe_text.write_text(cue["narration"].strip() + "\n")
+        probe_text.write_text(ensure_terminal_pause(cue["narration"]) + "\n")
         subprocess.run([
             "open_jtalk", "-x", str(dictionary), "-m", str(voice), "-r", str(OPEN_JTALK_RATE),
             "-ow", str(probe_wav), str(probe_text),
@@ -210,13 +210,13 @@ with tempfile.TemporaryDirectory() as directory:
         with wave.open(str(probe_wav)) as audio:
             probe_durations.append(audio.getnframes() / audio.getframerate())
 
-    # The only narration used in the finished video is one continuous synthesis.
-    # Open JTalk's command-line reader treats line breaks as separate input units,
-    # so keep the complete script on one physical line to guarantee every cue is
-    # synthesized in the one published utterance stream.
+    # Keep the entire published narration on one physical line so Open JTalk never
+    # resets at scene boundaries. Terminal punctuation supplies a natural short
+    # phrase pause, and the actual pause in this final WAV drives visual timing.
     narration = tmp / "narration.txt"
     narration_wav = tmp / "voice-single-pass.wav"
-    narration.write_text(" ".join(cue["narration"].strip() for cue in story["script"]) + "\n")
+    narration_chunks = [ensure_terminal_pause(cue["narration"]) for cue in story["script"]]
+    narration.write_text(" ".join(narration_chunks) + "\n")
     subprocess.run([
         "open_jtalk", "-x", str(dictionary), "-m", str(voice), "-r", str(OPEN_JTALK_RATE),
         "-ow", str(narration_wav), str(narration),
@@ -228,28 +228,21 @@ with tempfile.TemporaryDirectory() as directory:
     if probe_total <= 0 or narration_duration <= 0:
         raise SystemExit("Open JTalk produced an empty narration")
 
-    # Scale the probe timing weights onto the measured single-pass narration.
-    # This keeps visuals close to sentence boundaries without ever publishing the
-    # probe audio. The final cue absorbs a tiny end pause; all speech stays 1.10x.
-    scale = narration_duration / probe_total
-    scene_durations = [duration * scale for duration in probe_durations]
-    if scene_durations and scene_durations[0] < MIN_OPENING_SECONDS and len(scene_durations) > 1:
-        needed = MIN_OPENING_SECONDS - scene_durations[0]
-        remaining = sum(scene_durations[1:])
-        if remaining > needed:
-            scene_durations[0] = MIN_OPENING_SECONDS
-            factor = (remaining - needed) / remaining
-            scene_durations[1:] = [duration * factor for duration in scene_durations[1:]]
-
-    cursor = 0.0
+    # Use rough probe proportions only to identify the expected neighborhood, then
+    # snap each scene boundary to a real low-energy pause measured in the final WAV.
+    # This avoids switching images mid-sentence while keeping the published speech
+    # untouched at the fixed 1.10x Open JTalk rate.
+    silence_regions = detect_silence_regions(narration_wav)
+    scene_boundaries, boundary_alignment = snap_scene_boundaries(
+        probe_durations,
+        narration_duration,
+        silence_regions,
+    )
+    timeline = [0.0, *scene_boundaries, narration_duration + FINAL_END_PAUSE_SECONDS]
     cue_durations = []
-    for index, (cue, scene_duration) in enumerate(zip(story["script"], scene_durations)):
-        start = round(cursor, 4)
-        cursor += scene_duration
-        end = round(cursor, 4)
-        if index == len(story["script"]) - 1:
-            end = round(narration_duration + FINAL_END_PAUSE_SECONDS, 4)
-            cursor = end
+    for index, cue in enumerate(story["script"]):
+        start = round(timeline[index], 4)
+        end = round(timeline[index + 1], 4)
         cue["start"] = start
         cue["end"] = end
         cue_durations.append(round(end - start, 4))
@@ -368,12 +361,21 @@ manifest = {
     "content_hash": story.get("content_hash"),
     "page_count": len(story.get("script", [])) - 1,
     "duration_seconds": DURATION,
-    "audio_pipeline": "single-pass-open-jtalk-audio-led-v2",
+    "audio_pipeline": "single-pass-open-jtalk-audio-led-v3",
     "audio_tts_rate": OPEN_JTALK_RATE,
     "audio_single_pass": True,
     "audio_single_pass_duration_seconds": round(narration_duration, 4),
-    "audio_alignment_source": "probe-duration-proportional",
+    "audio_alignment_source": "single-pass-wav-silence-snapped",
     "audio_probe_durations": [round(duration, 4) for duration in probe_durations],
+    "audio_detected_silence_regions": [
+        {key: round(float(value), 4) for key, value in region.items()}
+        for region in silence_regions
+    ],
+    "audio_scene_boundaries": [round(boundary, 4) for boundary in scene_boundaries],
+    "audio_boundary_alignment": boundary_alignment,
+    "audio_alignment_fallback_count": sum(
+        1 for item in boundary_alignment if item["method"] == "proportional-fallback"
+    ),
     "audio_scene_durations": cue_durations,
     "audio_final_end_pause_seconds": FINAL_END_PAUSE_SECONDS,
     "audio_tempo_adjustment": False,
