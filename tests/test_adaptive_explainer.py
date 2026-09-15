@@ -67,19 +67,32 @@ class AdaptiveExplainerTest(unittest.TestCase):
         self.assertIn('"opening_headline_target_chars_per_line": 9', renderer)
         self.assertIn('"subtitle_font_size_px": 48', renderer)
 
-    def test_renderers_use_fixed_speed_audio_led_timing(self):
-        for filename in ("render_adaptive_explainer.py", "render_reference.py"):
-            with self.subTest(renderer=filename):
-                renderer = (ROOT / "scripts" / filename).read_text()
-                self.assertIn("OPEN_JTALK_RATE = 1.10", renderer)
-                self.assertIn("SCENE_END_PAUSE_SECONDS = 0.18", renderer)
-                self.assertIn('cue["start"] = start', renderer)
-                self.assertIn('cue["end"] = end', renderer)
-                self.assertIn("cue_wavs.append(raw_wav)", renderer)
-                self.assertIn("story_path.write_text", renderer)
-                self.assertIn('"audio_pipeline": "fixed-rate-open-jtalk-audio-led-v1"', renderer)
-                self.assertIn('"audio_tempo_adjustment": False', renderer)
-                self.assertNotIn("atempo=", renderer)
+    def test_adaptive_renderer_uses_single_pass_audio_led_timing(self):
+        renderer = (ROOT / "scripts/render_adaptive_explainer.py").read_text()
+        self.assertIn("OPEN_JTALK_RATE = 1.10", renderer)
+        self.assertIn("FINAL_END_PAUSE_SECONDS = 0.18", renderer)
+        self.assertIn('narration.write_text("\\n".join(cue["narration"].strip() for cue in story["script"])', renderer)
+        self.assertIn('narration_wav = tmp / "voice-single-pass.wav"', renderer)
+        self.assertIn('DURATION = round(narration_duration + FINAL_END_PAUSE_SECONDS, 4)', renderer)
+        self.assertIn('"audio_pipeline": "single-pass-open-jtalk-audio-led-v2"', renderer)
+        self.assertIn('"audio_single_pass": True', renderer)
+        self.assertIn('"audio_alignment_source": "probe-duration-proportional"', renderer)
+        self.assertIn('"audio_tempo_adjustment": False', renderer)
+        self.assertNotIn("cue_wavs.append", renderer)
+        self.assertNotIn("concat=n={len(cue_wavs)}", renderer)
+        self.assertNotIn("atempo=", renderer)
+
+    def test_reference_renderer_keeps_fixed_speed_audio_led_timing(self):
+        renderer = (ROOT / "scripts/render_reference.py").read_text()
+        self.assertIn("OPEN_JTALK_RATE = 1.10", renderer)
+        self.assertIn("SCENE_END_PAUSE_SECONDS = 0.18", renderer)
+        self.assertIn('cue["start"] = start', renderer)
+        self.assertIn('cue["end"] = end', renderer)
+        self.assertIn("cue_wavs.append(raw_wav)", renderer)
+        self.assertIn("story_path.write_text", renderer)
+        self.assertIn('"audio_pipeline": "fixed-rate-open-jtalk-audio-led-v1"', renderer)
+        self.assertIn('"audio_tempo_adjustment": False', renderer)
+        self.assertNotIn("atempo=", renderer)
 
     def test_rendered_timing_metadata_and_images_follow_measured_audio(self):
         adaptive = (ROOT / "scripts/render_adaptive_explainer.py").read_text()
