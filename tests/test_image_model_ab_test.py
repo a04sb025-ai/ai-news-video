@@ -24,6 +24,11 @@ class ImageModelAbTestTests(unittest.TestCase):
         self.assertEqual(ab.CONFIG["quality"], "low")
         self.assertEqual(ab.parse_args([]).quality, "low")
 
+    def test_default_models_compare_current_production_with_flare(self):
+        expected = ["gpt-image-2", "gpt-image-2.5-flare"]
+        self.assertEqual(ab.CONFIG["models"], expected)
+        self.assertEqual(ab.parse_args([]).models, ",".join(expected))
+
     def test_prompt_uses_story_context_and_visual_rules(self):
         prompt = ab.build_prompt(self.fixture())
         self.assertIn("新しいAI機能", prompt)
