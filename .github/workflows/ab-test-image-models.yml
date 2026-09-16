@@ -1,5 +1,5 @@
-name: AB test image models
-run-name: Image model AB test / ${{ inputs.request_id || 'story request' }}
+name: Compare GPT-Image-2 vs GPT-Image-2.5 Flare
+run-name: GPT-Image-2 vs 2.5 Flare / ${{ inputs.request_id || 'story request' }}
 
 "on":
   workflow_dispatch:
@@ -23,7 +23,7 @@ run-name: Image model AB test / ${{ inputs.request_id || 'story request' }}
       models:
         description: Comma-separated image models
         required: true
-        default: gpt-image-1,gpt-image-2
+        default: gpt-image-2,gpt-image-2.5-flare
         type: string
       size:
         description: Image size
