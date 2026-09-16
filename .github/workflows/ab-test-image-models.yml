@@ -1,23 +1,23 @@
 name: Compare GPT-Image-2 vs GPT-Image-2.5 Flare
-run-name: GPT-Image-2 vs 2.5 Flare / ${{ inputs.request_id || 'story request' }}
+run-name: GPT-Image-2 vs 2.5 Flare / ${{ inputs.request_id || 'cost-benchmark' }}
 
 "on":
   workflow_dispatch:
     inputs:
       story_json_path:
-        description: Repository-relative prepared story.json path (takes priority)
+        description: Optional repository-relative prepared story.json path
         required: false
         type: string
       payload_json_path:
-        description: Repository-relative verified payload JSON path (used when story path is empty)
+        description: Optional repository-relative verified payload JSON path
         required: false
         type: string
       payload_json:
-        description: Verified payload JSON text (recommended when the file is not committed)
+        description: Optional verified payload JSON text
         required: false
         type: string
       request_id:
-        description: Optional safe output identifier (otherwise read from JSON)
+        description: Optional safe output identifier
         required: false
         type: string
       models:
@@ -92,22 +92,35 @@ jobs:
                   handle.write("story_path=\n")
                   handle.write(f"payload_path={resolved.as_posix()}\n")
               print(f"Using repository payload: {resolved}")
-          elif inline:
-              try:
-                  parsed = json.loads(inline)
-              except json.JSONDecodeError as error:
-                  raise SystemExit(f"payload_json is not valid JSON: {error}")
-              if not isinstance(parsed, dict):
-                  raise SystemExit("payload_json must be a JSON object")
+          else:
+              if inline:
+                  try:
+                      parsed = json.loads(inline)
+                  except json.JSONDecodeError as error:
+                      raise SystemExit(f"payload_json is not valid JSON: {error}")
+                  if not isinstance(parsed, dict):
+                      raise SystemExit("payload_json must be a JSON object")
+                  print("Using inline payload_json from workflow_dispatch")
+              else:
+                  parsed = {
+                      "request_id": "gpt-image-cost-benchmark",
+                      "headline": "AIツールの新しい機能",
+                      "summary": "日々の作業を効率化する新機能を紹介します",
+                      "hook": "何が変わる？",
+                      "image_scenes": [{
+                          "role": "hook",
+                          "verified_content": "AIツールに新しい機能が追加されたという想定の比較用サンプル",
+                          "visual_intent": "新機能によって作業がシンプルになる変化を一つの主役で示す",
+                          "key_visuals": ["作業の簡素化", "新しい機能"]
+                      }]
+                  }
+                  print("No custom input supplied; using the built-in cost benchmark payload")
               destination = Path("work/ab-test/dispatch-payload.json")
               destination.parent.mkdir(parents=True, exist_ok=True)
               destination.write_text(json.dumps(parsed, ensure_ascii=False, indent=2) + "\n")
               with output.open("a") as handle:
                   handle.write("story_path=\n")
                   handle.write(f"payload_path={destination.as_posix()}\n")
-              print("Using inline payload_json from workflow_dispatch")
-          else:
-              raise SystemExit("Set story_json_path, payload_json_path, or payload_json")
           PY
       - name: Generate one key visual per model
         id: generate
@@ -137,6 +150,20 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
           path: assets/generated/ab-tests/**
+      - name: Write comparison guidance
+        if: always()
+        run: |
+          {
+            echo "## GPT image cost comparison"
+            echo ""
+            echo "- Models: \`${{ inputs.models }}\`"
+            echo "- Size: \`${{ inputs.size }}\`"
+            echo "- Quality: \`${{ inputs.quality }}\`"
+            echo "- This workflow does not change the production model."
+            echo ""
+            echo "Compare the artifact images, then check OpenAI Usage for this run's time window grouped by model."
+            echo "If Flare is cheaper without a visible quality regression, production can be switched separately."
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Require a comparable result
         if: always()
         env:
