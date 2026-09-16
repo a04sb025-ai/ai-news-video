@@ -122,7 +122,7 @@ jobs:
                   handle.write("story_path=\n")
                   handle.write(f"payload_path={destination.as_posix()}\n")
           PY
-      - name: Generate one key visual per model
+      - name: Generate one key visual per model and capture token usage
         id: generate
         continue-on-error: true
         env:
@@ -141,8 +141,8 @@ jobs:
             args+=(--payload-json "$PAYLOAD_PATH")
           fi
           if [[ -n "$REQUEST_ID" ]]; then args+=(--request-id "$REQUEST_ID"); fi
-          python3 scripts/ab_test_image_models.py "${args[@]}"
-      - name: Upload comparison images, previews, log, and report
+          python3 scripts/compare_image_models_cost.py "${args[@]}"
+      - name: Upload comparison images, previews, token log, and cost report
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -161,8 +161,8 @@ jobs:
             echo "- Quality: \`${{ inputs.quality }}\`"
             echo "- This workflow does not change the production model."
             echo ""
-            echo "Compare the artifact images, then check OpenAI Usage for this run's time window grouped by model."
-            echo "If Flare is cheaper without a visible quality regression, production can be switched separately."
+            echo "The artifact now contains cost-comparison.json and cost-comparison.md with token usage, elapsed time, and an estimated API cost for each model."
+            echo "Dashboard billing remains the source of truth."
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Require a comparable result
         if: always()
@@ -170,7 +170,7 @@ jobs:
           GENERATION_OUTCOME: ${{ steps.generate.outcome }}
         run: |
           if [[ "$GENERATION_OUTCOME" != success ]]; then
-            echo "COMPARISON INCOMPLETE: inspect comparison-log.json and comparison-report.md in the artifact for per-model errors." >&2
+            echo "COMPARISON INCOMPLETE: inspect cost-comparison.json in the artifact for per-model errors." >&2
             exit 1
           fi
-          echo "COMPARISON COMPLETE: every requested model generated one image under identical conditions."
+          echo "COMPARISON COMPLETE: every requested model generated one image and reported usage under identical conditions."
