@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,6 +32,11 @@ def publish_blockers(result: dict) -> list[str]:
     return blockers
 
 
+def failure_signature(result: dict) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return the stable evidence needed to decide whether a retry can change anything."""
+    return tuple(sorted(failed_checks(result))), tuple(sorted(publish_blockers(result)))
+
+
 def result_is_complete(result: dict) -> bool:
     return isinstance(result.get("qa"), dict) and bool(result.get("qa")) and "success" in result
 
@@ -46,6 +52,35 @@ def publish_only_retryable(result: dict, attempts: list[dict], has_image_key: bo
         if attempt.get("regenerated_images") is True and attempt.get("publish_blockers") == blockers:
             return False
     return True
+
+
+def can_apply_opening_only_fix(result: dict, *, video_exists: bool, thumbnail_exists: bool, regenerated: bool) -> bool:
+    """Use the already rendered media when the only known defect is opening visibility."""
+    return (
+        not regenerated
+        and video_exists
+        and thumbnail_exists
+        and failed_checks(result) == ["headline_layout_qa"]
+    )
+
+
+def should_stop_same_input_failure(
+    result: dict,
+    *,
+    previous_signature: tuple[tuple[str, ...], tuple[str, ...]] | None,
+    same_inputs: bool,
+    regenerated: bool,
+) -> bool:
+    """Do not spend another full render on unchanged inputs and unchanged evidence.
+
+    Opening-only visibility failures are excluded because they have a targeted repair
+    that can modify the existing MP4 without rebuilding the whole video.
+    """
+    if regenerated or not same_inputs or previous_signature is None:
+        return False
+    if failed_checks(result) == ["headline_layout_qa"]:
+        return False
+    return failure_signature(result) == previous_signature
 
 
 def opening_visual_lift_alpha(repair: int) -> float:
@@ -148,6 +183,10 @@ def render_input_digest(story: Path) -> str | None:
         return None
 
 
+def _seconds(started: float) -> float:
+    return round(time.monotonic() - started, 2)
+
+
 def main() -> int:
     if len(sys.argv) != 4:
         raise SystemExit("usage: self_heal_adaptive_daily_video.py STORY_JSON VIDEO_MP4 REPORTS_DIR")
@@ -156,7 +195,9 @@ def main() -> int:
     result = base.read_json(reports / "automation-result.json")
     attempts = []
     previous_render_inputs = None
+    previous_failure_signature = None
     has_image_key = bool(os.environ.get("OPENAI_API_KEY"))
+    total_started = time.monotonic()
 
     if result.get("auto_publish_ready") is True:
         summary = {
@@ -165,19 +206,29 @@ def main() -> int:
             "attempts": [],
             "failed_checks": [],
             "publish_blockers": [],
+            "total_seconds": _seconds(total_started),
             "final": result,
         }
         (reports / "self-heal-summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
         return 0
 
     for repair in range(1, MAX_REPAIRS + 1):
+        repair_started = time.monotonic()
+        current_failed = failed_checks(result)
+        current_blockers = publish_blockers(result)
+        print(
+            f"[self-heal] repair={repair}/{MAX_REPAIRS} failed={current_failed} blockers={current_blockers}",
+            flush=True,
+        )
+
         if base.is_semantic_stop(result):
             attempts.append({
                 "repair": repair,
                 "action": "stopped",
                 "reason": "semantic-or-voice-gate",
-                "failed_checks": failed_checks(result),
-                "publish_blockers": publish_blockers(result),
+                "repair_seconds": _seconds(repair_started),
+                "failed_checks": current_failed,
+                "publish_blockers": current_blockers,
             })
             break
 
@@ -186,27 +237,117 @@ def main() -> int:
                 "repair": repair,
                 "action": "stopped",
                 "reason": "non-repairable-publish-gate",
-                "failed_checks": failed_checks(result),
-                "publish_blockers": publish_blockers(result),
+                "repair_seconds": _seconds(repair_started),
+                "failed_checks": current_failed,
+                "publish_blockers": current_blockers,
             })
             break
 
         base.archive_attempt(reports, repair, "before")
+
+        image_started = time.monotonic()
         regenerated = base.regenerate_images_if_needed(story, result, reports)
+        image_seconds = _seconds(image_started)
+        print(f"[timing] image_recovery_seconds={image_seconds} regenerated={regenerated}", flush=True)
+
         render_inputs = render_input_digest(story)
-        repeated_dark_opening = (
-            render_inputs is not None and render_inputs == previous_render_inputs
-            and not regenerated and result.get("used_generated_images") is True
-            and failed_checks(result) == ["headline_layout_qa"]
+        same_inputs = (
+            render_inputs is not None
+            and previous_render_inputs is not None
+            and render_inputs == previous_render_inputs
+            and not regenerated
         )
+        thumbnail = video.with_name(f"{video.stem}.thumbnail.jpg")
+
+        if can_apply_opening_only_fix(
+            result,
+            video_exists=video.is_file(),
+            thumbnail_exists=thumbnail.is_file(),
+            regenerated=regenerated,
+        ):
+            correction_started = time.monotonic()
+            lift_alpha = apply_opening_visual_lift(video, thumbnail, repair)
+            correction_seconds = _seconds(correction_started)
+            print(
+                f"[timing] opening_only_correction_seconds={correction_seconds} alpha={lift_alpha}",
+                flush=True,
+            )
+
+            optimize_started = time.monotonic()
+            compressed = base.optimize_if_needed(video)
+            optimize_seconds = _seconds(optimize_started)
+            print(f"[timing] optimize_seconds={optimize_seconds} compressed={compressed}", flush=True)
+
+            qa_started = time.monotonic()
+            result = perform_qa(story, video, reports)
+            qa_seconds = _seconds(qa_started)
+            print(f"[timing] qa_seconds={qa_seconds}", flush=True)
+
+            ready = result.get("auto_publish_ready") is True
+            previous_render_inputs = render_input_digest(story)
+            previous_failure_signature = failure_signature(result)
+            attempts.append({
+                "repair": repair,
+                "action": "opening-only-repair",
+                "reason": "headline-layout-only",
+                "rendered": False,
+                "thumbnail_rendered": True,
+                "regenerated_images": regenerated,
+                "opening_visual_lift_alpha": lift_alpha,
+                "same_render_inputs": same_inputs,
+                "compressed": compressed,
+                "auto_publish_ready": ready,
+                "image_recovery_seconds": image_seconds,
+                "opening_correction_seconds": correction_seconds,
+                "optimize_seconds": optimize_seconds,
+                "qa_seconds": qa_seconds,
+                "repair_seconds": _seconds(repair_started),
+                "failed_checks": failed_checks(result),
+                "publish_blockers": publish_blockers(result),
+            })
+            base.archive_attempt(reports, repair, "after")
+            if ready:
+                break
+            continue
+
+        if should_stop_same_input_failure(
+            result,
+            previous_signature=previous_failure_signature,
+            same_inputs=same_inputs,
+            regenerated=regenerated,
+        ):
+            attempts.append({
+                "repair": repair,
+                "action": "stopped",
+                "reason": "same-input-same-failure",
+                "rendered": False,
+                "regenerated_images": regenerated,
+                "same_render_inputs": True,
+                "image_recovery_seconds": image_seconds,
+                "repair_seconds": _seconds(repair_started),
+                "failed_checks": current_failed,
+                "publish_blockers": current_blockers,
+            })
+            print("[self-heal] stopping: unchanged inputs cannot repair the same QA failure", flush=True)
+            break
+
         env = dict(os.environ)
         env["OPENING_SAFE_MODE"] = "1"
 
         video.unlink(missing_ok=True)
         video.with_suffix(".render.json").unlink(missing_ok=True)
-        video.with_name(f"{video.stem}.thumbnail.jpg").unlink(missing_ok=True)
-        render_status = base.run([sys.executable, RENDERER, str(story), str(video)], env=env,
-                                 log=reports / f"self-heal-render-{repair}.txt")
+        thumbnail.unlink(missing_ok=True)
+
+        render_started = time.monotonic()
+        print(f"[timing] full_render_start repair={repair}", flush=True)
+        render_status = base.run(
+            [sys.executable, RENDERER, str(story), str(video)],
+            env=env,
+            log=reports / f"self-heal-render-{repair}.txt",
+        )
+        render_seconds = _seconds(render_started)
+        print(f"[timing] full_render_seconds={render_seconds} status={render_status}", flush=True)
+
         thumbnail = video.with_name(f"{video.stem}.thumbnail.jpg")
         if render_status != 0 or not video.is_file() or not thumbnail.is_file():
             attempts.append({
@@ -216,18 +357,37 @@ def main() -> int:
                 "rendered": False,
                 "thumbnail_rendered": thumbnail.is_file(),
                 "regenerated_images": regenerated,
-                "failed_checks": failed_checks(result),
-                "publish_blockers": publish_blockers(result),
+                "image_recovery_seconds": image_seconds,
+                "render_seconds": render_seconds,
+                "repair_seconds": _seconds(repair_started),
+                "failed_checks": current_failed,
+                "publish_blockers": current_blockers,
             })
             continue
 
         lift_alpha = None
-        if failed_checks(result) == ["headline_layout_qa"]:
+        if current_failed == ["headline_layout_qa"]:
+            correction_started = time.monotonic()
             lift_alpha = apply_opening_visual_lift(video, thumbnail, repair)
+            correction_seconds = _seconds(correction_started)
+        else:
+            correction_seconds = 0.0
 
+        optimize_started = time.monotonic()
         compressed = base.optimize_if_needed(video)
-        previous_render_inputs = render_inputs
+        optimize_seconds = _seconds(optimize_started)
+        print(f"[timing] optimize_seconds={optimize_seconds} compressed={compressed}", flush=True)
+
+        qa_started = time.monotonic()
         result = perform_qa(story, video, reports)
+        qa_seconds = _seconds(qa_started)
+        print(f"[timing] qa_seconds={qa_seconds}", flush=True)
+
+        # The renderer updates audio-led scene timing in story.json. Hash after the
+        # render/QA so the next repair compares the actual stable inputs rather than
+        # mistaking that expected timing update for a new repair opportunity.
+        previous_render_inputs = render_input_digest(story)
+        previous_failure_signature = failure_signature(result)
         ready = result.get("auto_publish_ready") is True
         attempts.append({
             "repair": repair,
@@ -237,9 +397,15 @@ def main() -> int:
             "thumbnail_rendered": True,
             "regenerated_images": regenerated,
             "opening_visual_lift_alpha": lift_alpha,
-            "repeated_render_inputs": repeated_dark_opening,
+            "same_render_inputs": same_inputs,
             "compressed": compressed,
             "auto_publish_ready": ready,
+            "image_recovery_seconds": image_seconds,
+            "render_seconds": render_seconds,
+            "opening_correction_seconds": correction_seconds,
+            "optimize_seconds": optimize_seconds,
+            "qa_seconds": qa_seconds,
+            "repair_seconds": _seconds(repair_started),
             "failed_checks": failed_checks(result),
             "publish_blockers": publish_blockers(result),
         })
@@ -251,7 +417,10 @@ def main() -> int:
     ready = final.get("auto_publish_ready") is True
     final_failed = failed_checks(final)
     final_blockers = publish_blockers(final)
-    repair_count = sum(1 for attempt in attempts if attempt.get("action") in {"rerender", "safe-rerender"})
+    repair_count = sum(
+        1 for attempt in attempts
+        if attempt.get("action") in {"rerender", "safe-rerender", "opening-only-repair"}
+    )
     status = "ready" if ready else ("blocked-publish-gate" if final.get("success") is True else "failed-qa")
     summary = {
         "status": status,
@@ -260,10 +429,12 @@ def main() -> int:
         "attempts": attempts,
         "failed_checks": final_failed,
         "publish_blockers": final_blockers,
+        "total_seconds": _seconds(total_started),
         "final": final,
         "policy": "Never bypass factual, voice, headline, readability, subtitle-completeness, generated-image, or media QA gates.",
     }
     (reports / "self-heal-summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
+    print(f"[timing] self_heal_total_seconds={summary['total_seconds']}", flush=True)
     print(json.dumps(summary, ensure_ascii=False))
     return 0 if ready else 1
 
