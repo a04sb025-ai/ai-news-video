@@ -28,9 +28,62 @@ DEFAULT_OPENAI_INSTRUCTIONS = (
 )
 
 
+def _wav_pcm_data_bytes(path: Path) -> int | None:
+    """Return the physically present PCM data bytes, even for streaming WAV headers.
+
+    Some speech APIs emit RIFF/WAV with a sentinel data chunk size of 0xFFFFFFFF
+    because the response is streamed before the final payload length is known.
+    Python's wave module interprets that sentinel as 2,147,483,647 mono 16-bit
+    frames, which at 24 kHz looks like ~24.9 hours of audio. The actual PCM bytes
+    are still present in the file, so derive duration from the payload on disk.
+    """
+    file_size = path.stat().st_size
+    if file_size < 20:
+        return None
+
+    with path.open("rb") as handle:
+        header = handle.read(12)
+        if len(header) != 12 or header[:4] not in {b"RIFF", b"RF64"} or header[8:12] != b"WAVE":
+            return None
+
+        offset = 12
+        while offset + 8 <= file_size:
+            handle.seek(offset)
+            chunk_header = handle.read(8)
+            if len(chunk_header) != 8:
+                return None
+            chunk_id = chunk_header[:4]
+            chunk_size = int.from_bytes(chunk_header[4:8], "little")
+            data_start = offset + 8
+            available = max(0, file_size - data_start)
+
+            if chunk_id == b"data":
+                if chunk_size == 0xFFFFFFFF or chunk_size > available:
+                    return available
+                return chunk_size
+
+            if chunk_size > available:
+                return None
+            offset = data_start + chunk_size + (chunk_size & 1)
+
+    return None
+
+
 def wav_duration(path: Path) -> float:
     with wave.open(str(path)) as audio:
-        duration = audio.getnframes() / audio.getframerate()
+        sample_rate = audio.getframerate()
+        channels = audio.getnchannels()
+        sample_width = audio.getsampwidth()
+        declared_frames = audio.getnframes()
+
+    bytes_per_frame = channels * sample_width
+    data_bytes = _wav_pcm_data_bytes(path)
+    if data_bytes is not None and bytes_per_frame > 0:
+        frames = data_bytes / bytes_per_frame
+    else:
+        frames = declared_frames
+
+    duration = frames / sample_rate if sample_rate > 0 else 0.0
     if duration <= 0:
         raise RuntimeError(f"TTS produced an empty WAV: {path}")
     return duration
