@@ -27,13 +27,31 @@ def read_json(path: Path) -> dict:
 
 
 def run(command: list[str], *, env: dict | None = None, log: Path | None = None) -> int:
-    completed = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
+    effective = [str(part) for part in command]
+    if len(effective) >= 2 and Path(effective[1]).name == "render_adaptive_explainer.py":
+        effective[1] = "scripts/render_adaptive_explainer_fast.py"
+        print("[self-heal] using CPU-optimized adaptive renderer", flush=True)
+
     if log:
         log.parent.mkdir(parents=True, exist_ok=True)
-        log.write_text(completed.stdout or "")
-    else:
-        sys.stdout.write(completed.stdout or "")
-    return completed.returncode
+        with log.open("w") as handle:
+            process = subprocess.Popen(
+                effective,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                env=env,
+                bufsize=1,
+            )
+            assert process.stdout is not None
+            for line in process.stdout:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                handle.write(line)
+                handle.flush()
+            return process.wait()
+
+    return subprocess.run(effective, env=env).returncode
 
 
 def archive_attempt(reports: Path, number: int, label: str) -> None:
@@ -58,7 +76,7 @@ def optimize_if_needed(video: Path) -> bool:
     temporary = video.with_name(f".{video.stem}.compressed{video.suffix}")
     subprocess.run([
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(video),
-        "-c:v", "libx264", "-crf", "27", "-preset", "medium", "-pix_fmt", "yuv420p",
+        "-c:v", "libx264", "-crf", "27", "-preset", "veryfast", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(temporary),
     ], check=True)
     subprocess.run(["ffmpeg", "-v", "error", "-i", str(temporary), "-f", "null", "-"], check=True)
