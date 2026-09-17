@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate cached editorial images for every adaptive explainer scene."""
 import base64, json, os, sys, time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -12,6 +13,7 @@ VALID_QUALITIES = {"low", "medium", "high"}
 RETRYABLE_HTTP_STATUSES = {408, 409, 429, 500, 502, 503, 504}
 IMAGE_GENERATION_ATTEMPTS = max(1, int(os.environ.get("IMAGE_GENERATION_ATTEMPTS", "3")))
 IMAGE_GENERATION_RETRY_SECONDS = max(0.0, float(os.environ.get("IMAGE_GENERATION_RETRY_SECONDS", "3")))
+IMAGE_GENERATION_WORKERS = max(1, min(4, int(os.environ.get("IMAGE_GENERATION_WORKERS", "3"))))
 COMMON = (
     "Original vertical editorial scene for the AI Tool Watch series, grounded only in the verified news content. "
     "Deep navy and black field, restrained amber, violet and lavender accents, subtle paper grain, soft light, "
@@ -45,19 +47,9 @@ BODY_LAYOUT = (
     "Preserve one-page-one-message: one dominant visual relationship, no collage of unrelated secondary symbols. "
 )
 THUMBNAIL_STYLE = {
-    "A": (
-        "Opening thumbnail mode A (breaking-headline mood): create one concrete high-tension news scene that communicates risk, "
-        "conflict, regulation, security, outage, or another verified problem immediately. Use composition and subject interaction for urgency, "
-        "not warning-icon collages, fake sirens, sensational disaster imagery, or unsupported danger. "
-    ),
-    "B": (
-        "Opening thumbnail mode B (editorial magazine-cover mood): make one strong editorial hero scene around the central trend, industry shift, "
-        "new concept, or why-this-matters angle. Prioritize an identifiable subject and a sophisticated magazine-cover composition, not an infographic. "
-    ),
-    "C": (
-        "Opening thumbnail mode C (simple declarative poster mood): show one immediately recognizable object, action, or before/after idea that makes the user-facing change obvious. "
-        "Keep the composition minimal with generous negative space and no secondary decorative objects. "
-    ),
+    "A": "Opening thumbnail mode A (breaking-headline mood): create one concrete high-tension news scene that communicates risk, conflict, regulation, security, outage, or another verified problem immediately. Use composition and subject interaction for urgency, not warning-icon collages, fake sirens, sensational disaster imagery, or unsupported danger. ",
+    "B": "Opening thumbnail mode B (editorial magazine-cover mood): make one strong editorial hero scene around the central trend, industry shift, new concept, or why-this-matters angle. Prioritize an identifiable subject and a sophisticated magazine-cover composition, not an infographic. ",
+    "C": "Opening thumbnail mode C (simple declarative poster mood): show one immediately recognizable object, action, or before/after idea that makes the user-facing change obvious. Keep the composition minimal with generous negative space and no secondary decorative objects. ",
 }
 TEEN = {
     "scene-teen-hero.png": "A Japanese teenager discovers a useful new experience; chest-up hero and clear curiosity.",
@@ -66,176 +58,81 @@ TEEN = {
     "scene-teen-healthy-use.png": "The same teenager takes a healthy break and returns to ordinary life.",
 }
 
-
 class ImageGenerationError(RuntimeError):
     def __init__(self, message, *, status=None, provider_error="", retryable=False, attempts=1):
-        super().__init__(message)
-        self.status = status
-        self.provider_error = provider_error
-        self.retryable = retryable
-        self.attempts = attempts
-
+        super().__init__(message); self.status=status; self.provider_error=provider_error; self.retryable=retryable; self.attempts=attempts
 
 def effective_quality():
-    override = os.environ.get("IMAGE_GENERATION_QUALITY")
-    if override:
-        quality = override.strip().lower()
+    override=os.environ.get("IMAGE_GENERATION_QUALITY")
+    if override: quality=override.strip().lower()
     else:
-        news_date = os.environ.get("NEWS_DATE", "").strip()
-        experiment_dates = CONFIG.get("experiments", {}).get("medium_quality_news_dates", [])
-        quality = "medium" if news_date and news_date in experiment_dates else CONFIG["quality"]
-    if quality not in VALID_QUALITIES:
-        raise ValueError(f"unsupported image quality: {quality}")
+        news_date=os.environ.get("NEWS_DATE", "").strip(); experiment_dates=CONFIG.get("experiments", {}).get("medium_quality_news_dates", [])
+        quality="medium" if news_date and news_date in experiment_dates else CONFIG["quality"]
+    if quality not in VALID_QUALITIES: raise ValueError(f"unsupported image quality: {quality}")
     return quality
 
-
 def story_prompts(path):
-    story = json.loads(path.read_text())
-    scenes = story["image_scenes"]
-    prompts = {}
+    story=json.loads(path.read_text()); scenes=story["image_scenes"]; prompts={}
     for name, scene in zip(story["image_assets"], scenes):
-        intent = scene.get("visual_intent", "")
-        visual_type = scene.get("visual_type", "editorial")
-        visuals = ", ".join(scene.get("key_visuals", []))
-        thumbnail_style = scene.get("thumbnail_style")
-        prompts[name] = (
-            COMMON
-            + ((OPENING_LAYOUT + THUMBNAIL_STYLE.get(thumbnail_style, "")) if thumbnail_style else BODY_LAYOUT)
-            + f" Scene role: {scene['role']}."
-            + f" Visual explanation type: {visual_type}."
-            + (f" Visual intent: {intent}." if intent else "")
-            + (f" Required concrete visual elements: {visuals}." if visuals else "")
-            + f" Depict only this verified context: {scene['verified_content']}"
-        )
+        intent=scene.get("visual_intent", ""); visual_type=scene.get("visual_type", "editorial"); visuals=", ".join(scene.get("key_visuals", [])); thumbnail_style=scene.get("thumbnail_style")
+        prompts[name]=(COMMON + ((OPENING_LAYOUT + THUMBNAIL_STYLE.get(thumbnail_style, "")) if thumbnail_style else BODY_LAYOUT) + f" Scene role: {scene['role']}." + f" Visual explanation type: {visual_type}." + (f" Visual intent: {intent}." if intent else "") + (f" Required concrete visual elements: {visuals}." if visuals else "") + f" Depict only this verified context: {scene['verified_content']}")
     return ROOT / story["image_asset_dir"], prompts
 
-
 def provider_error_text(error):
-    if not isinstance(error, HTTPError):
-        return ""
+    if not isinstance(error, HTTPError): return ""
     try:
-        raw = error.read().decode("utf-8", errors="replace")
-        payload = json.loads(raw)
-        detail = payload.get("error", {}) if isinstance(payload, dict) else {}
-        if isinstance(detail, dict):
-            return str(detail.get("message") or detail.get("code") or detail.get("type") or "")[:500]
-        return raw[:500]
-    except Exception:
-        return ""
-
+        raw=error.read().decode("utf-8", errors="replace"); payload=json.loads(raw); detail=payload.get("error", {}) if isinstance(payload, dict) else {}
+        return str(detail.get("message") or detail.get("code") or detail.get("type") or "")[:500] if isinstance(detail, dict) else raw[:500]
+    except Exception: return ""
 
 def request_generation(payload, api_key):
-    last_error = None
-    for attempt in range(1, IMAGE_GENERATION_ATTEMPTS + 1):
-        request = Request(
-            "https://api.openai.com/v1/images/generations",
-            data=payload,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            method="POST",
-        )
+    last_error=None
+    for attempt in range(1, IMAGE_GENERATION_ATTEMPTS+1):
+        request=Request("https://api.openai.com/v1/images/generations", data=payload, headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json"}, method="POST")
         try:
-            with urlopen(request, timeout=300) as response:
-                return json.load(response), attempt
+            with urlopen(request, timeout=300) as response: return json.load(response), attempt
         except HTTPError as error:
-            status = int(getattr(error, "code", 0) or 0)
-            detail = provider_error_text(error)
-            retryable = status in RETRYABLE_HTTP_STATUSES
-            last_error = ImageGenerationError(
-                f"image provider HTTP {status}", status=status, provider_error=detail,
-                retryable=retryable, attempts=attempt,
-            )
-            if not retryable or attempt >= IMAGE_GENERATION_ATTEMPTS:
-                raise last_error from error
+            status=int(getattr(error,"code",0) or 0); detail=provider_error_text(error); retryable=status in RETRYABLE_HTTP_STATUSES
+            last_error=ImageGenerationError(f"image provider HTTP {status}",status=status,provider_error=detail,retryable=retryable,attempts=attempt)
+            if not retryable or attempt>=IMAGE_GENERATION_ATTEMPTS: raise last_error from error
         except URLError as error:
-            last_error = ImageGenerationError(
-                "image provider network error", provider_error=str(getattr(error, "reason", ""))[:500],
-                retryable=True, attempts=attempt,
-            )
-            if attempt >= IMAGE_GENERATION_ATTEMPTS:
-                raise last_error from error
-        if IMAGE_GENERATION_RETRY_SECONDS > 0:
-            delay = IMAGE_GENERATION_RETRY_SECONDS * attempt
-            print(f"image generation transient failure; retrying in {delay:.0f}s (attempt {attempt}/{IMAGE_GENERATION_ATTEMPTS})", file=sys.stderr)
-            time.sleep(delay)
+            last_error=ImageGenerationError("image provider network error",provider_error=str(getattr(error,"reason",""))[:500],retryable=True,attempts=attempt)
+            if attempt>=IMAGE_GENERATION_ATTEMPTS: raise last_error from error
+        if IMAGE_GENERATION_RETRY_SECONDS>0:
+            delay=IMAGE_GENERATION_RETRY_SECONDS*attempt; print(f"image generation transient failure; retrying in {delay:.0f}s (attempt {attempt}/{IMAGE_GENERATION_ATTEMPTS})",file=sys.stderr); time.sleep(delay)
     raise last_error or ImageGenerationError("image provider request failed")
 
-
-def generate(destination, prompt, api_key, quality):
-    if destination.is_file() and destination.stat().st_size > 0:
-        print(f"reuse {destination.relative_to(ROOT)}")
-        return {"result": "reused", "attempts": 0}
-    payload = json.dumps({
-        "model": CONFIG["model"],
-        "prompt": prompt,
-        "size": CONFIG["size"],
-        "quality": quality,
-        "n": 1,
-        "output_format": "png",
-    }).encode()
-    result, attempts = request_generation(payload, api_key)
-    data = result["data"][0].get("b64_json")
-    if not data:
-        raise ImageGenerationError("image provider returned no PNG data", attempts=attempts)
-    temporary = destination.with_suffix(".png.part")
-    temporary.write_bytes(base64.b64decode(data, validate=True))
-    temporary.replace(destination)
-    print(f"generated {destination.relative_to(ROOT)} quality={quality} attempts={attempts}")
-    return {"result": "generated", "attempts": attempts}
-
+def generate(destination,prompt,api_key,quality):
+    if destination.is_file() and destination.stat().st_size>0:
+        print(f"reuse {destination.relative_to(ROOT)}"); return {"result":"reused","attempts":0}
+    payload=json.dumps({"model":CONFIG["model"],"prompt":prompt,"size":CONFIG["size"],"quality":quality,"n":1,"output_format":"png"}).encode()
+    result,attempts=request_generation(payload,api_key); data=result["data"][0].get("b64_json")
+    if not data: raise ImageGenerationError("image provider returned no PNG data",attempts=attempts)
+    temporary=destination.with_suffix(".png.part"); temporary.write_bytes(base64.b64decode(data,validate=True)); temporary.replace(destination)
+    print(f"generated {destination.relative_to(ROOT)} quality={quality} attempts={attempts}"); return {"result":"generated","attempts":attempts}
 
 def main():
-    if len(sys.argv) == 2:
-        output, prompts = story_prompts(Path(sys.argv[1]))
-    else:
-        output = ROOT / CONFIG["output_directory"] / CONFIG["prompt_version"]
-        prompts = {name: COMMON + detail for name, detail in TEEN.items()}
-    if len(prompts) > 4:
-        if len(prompts) > MAX_IMAGES:
-            raise SystemExit(f"image budget exceeded: maximum is {MAX_IMAGES}")
-    output.mkdir(parents=True, exist_ok=True)
-    quality = effective_quality()
-    log = {
-        "prompt_version": "daily-editorial-v6-shorts-ui-safe" if len(sys.argv) == 2 else CONFIG["prompt_version"],
-        "content_hash": json.loads(Path(sys.argv[1]).read_text()).get("content_hash") if len(sys.argv) == 2 else None,
-        "maximum": MAX_IMAGES,
-        "configured_quality": CONFIG["quality"],
-        "effective_quality": quality,
-        "model": CONFIG["model"],
-        "news_date": os.environ.get("NEWS_DATE"),
-        "request_attempts": IMAGE_GENERATION_ATTEMPTS,
-        "expected_images": list(prompts),
-        "images": [],
-    }
-    key = os.environ.get(CONFIG["api_key_env"])
+    if len(sys.argv)==2: output,prompts=story_prompts(Path(sys.argv[1]))
+    else: output=ROOT/CONFIG["output_directory"]/CONFIG["prompt_version"]; prompts={name:COMMON+detail for name,detail in TEEN.items()}
+    if len(prompts)>MAX_IMAGES: raise SystemExit(f"image budget exceeded: maximum is {MAX_IMAGES}")
+    output.mkdir(parents=True,exist_ok=True); quality=effective_quality()
+    log={"prompt_version":"daily-editorial-v6-shorts-ui-safe" if len(sys.argv)==2 else CONFIG["prompt_version"],"content_hash":json.loads(Path(sys.argv[1]).read_text()).get("content_hash") if len(sys.argv)==2 else None,"maximum":MAX_IMAGES,"configured_quality":CONFIG["quality"],"effective_quality":quality,"model":CONFIG["model"],"news_date":os.environ.get("NEWS_DATE"),"request_attempts":IMAGE_GENERATION_ATTEMPTS,"generation_workers":min(IMAGE_GENERATION_WORKERS,len(prompts)),"expected_images":list(prompts),"images":[]}
+    key=os.environ.get(CONFIG["api_key_env"])
     if not key:
-        log["status"] = "fallback"
-        log["reason"] = f"{CONFIG['api_key_env']} not configured"
-        (output / "image-generation-log.json").write_text(json.dumps(log, indent=2) + "\n")
-        print(log["reason"] + "; renderer will use fallback", file=sys.stderr)
-        return 2
+        log["status"]="fallback"; log["reason"]=f"{CONFIG['api_key_env']} not configured"; (output/"image-generation-log.json").write_text(json.dumps(log,indent=2)+"\n"); print(log["reason"]+"; renderer will use fallback",file=sys.stderr); return 2
     try:
-        for name, prompt in prompts.items():
-            generated = generate(output / name, prompt, key, quality)
-            log["images"].append({"file": name, **generated})
-        log["status"] = "complete"
-    except (ImageGenerationError, RuntimeError, ValueError, KeyError) as error:
-        log["status"] = "fallback"
-        log["reason"] = type(error).__name__
-        if isinstance(error, ImageGenerationError):
-            log["http_status"] = error.status
-            log["provider_error"] = error.provider_error
-            log["retryable"] = error.retryable
-            log["attempts"] = error.attempts
-        print(
-            f"image generation failed ({type(error).__name__})"
-            + (f" status={error.status}" if isinstance(error, ImageGenerationError) and error.status else "")
-            + (f" detail={error.provider_error}" if isinstance(error, ImageGenerationError) and error.provider_error else "")
-            + "; renderer will use fallback",
-            file=sys.stderr,
-        )
-    (output / "image-generation-log.json").write_text(json.dumps(log, ensure_ascii=False, indent=2) + "\n")
-    return 0 if log["status"] == "complete" else 1
+        # Scene images are independent. Bounded concurrency prevents a 9-10 scene story from
+        # serially consuming most of the Actions job timeout while keeping API pressure modest.
+        results={}
+        with ThreadPoolExecutor(max_workers=min(IMAGE_GENERATION_WORKERS,len(prompts))) as executor:
+            futures={executor.submit(generate,output/name,prompt,key,quality):name for name,prompt in prompts.items()}
+            for future in as_completed(futures): results[futures[future]]=future.result()
+        log["images"]=[{"file":name,**results[name]} for name in prompts]
+        log["status"]="complete"
+    except (ImageGenerationError,RuntimeError,ValueError,KeyError) as error:
+        log["status"]="fallback"; log["reason"]=type(error).__name__
+        if isinstance(error,ImageGenerationError): log.update({"http_status":error.status,"provider_error":error.provider_error,"retryable":error.retryable,"attempts":error.attempts})
+        print(f"image generation failed ({type(error).__name__})"+(f" status={error.status}" if isinstance(error,ImageGenerationError) and error.status else "")+(f" detail={error.provider_error}" if isinstance(error,ImageGenerationError) and error.provider_error else "")+"; renderer will use fallback",file=sys.stderr)
+    (output/"image-generation-log.json").write_text(json.dumps(log,ensure_ascii=False,indent=2)+"\n"); return 0 if log["status"]=="complete" else 1
 
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+if __name__=="__main__": raise SystemExit(main())
