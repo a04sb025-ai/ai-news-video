@@ -24,6 +24,14 @@ def tiny_wav_bytes(sample_rate=24000, duration=0.1):
     return buffer.getvalue()
 
 
+def streaming_wav_bytes(sample_rate=24000, duration=0.1):
+    payload = bytearray(tiny_wav_bytes(sample_rate=sample_rate, duration=duration))
+    # Reproduce the sentinel sizes used by streamed WAV responses.
+    payload[4:8] = (0xFFFFFFFF).to_bytes(4, "little")
+    payload[40:44] = (0xFFFFFFFF).to_bytes(4, "little")
+    return bytes(payload)
+
+
 class FakeResponse:
     def __init__(self, payload):
         self.payload = payload
@@ -39,6 +47,14 @@ class FakeResponse:
 
 
 class NarrationTtsTest(unittest.TestCase):
+    def test_streaming_wav_sentinel_uses_physical_pcm_length(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "streaming.wav"
+            output.write_bytes(streaming_wav_bytes(duration=0.25))
+            duration = module.wav_duration(output)
+
+        self.assertAlmostEqual(duration, 0.25, places=3)
+
     def test_openai_speech_requests_wav_at_natural_speed(self):
         captured = {}
 
