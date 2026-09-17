@@ -12,7 +12,7 @@ import wave
 from pathlib import Path
 
 from audio_timing import detect_silence_regions, ensure_terminal_pause, snap_scene_boundaries
-from narration_tts import synthesize_published_narration
+from narration_tts import synthesize_published_narration, wav_duration
 
 story_path, output = map(Path, sys.argv[1:3])
 story = json.loads(story_path.read_text())
@@ -53,6 +53,7 @@ THUMBNAIL_RENDER_SECONDS = min(0.5, max(0.1, OPENING_END / 2))
 # whenever OPENAI_API_KEY is configured.
 OPEN_JTALK_RATE = 1.10
 FINAL_END_PAUSE_SECONDS = 0.18
+MAX_RENDER_DURATION_SECONDS = 15 * 60
 
 # YouTube Shorts overlays are not part of the encoded video, so critical copy must
 # stay away from the app chrome. These values are deliberately conservative for
@@ -226,6 +227,22 @@ with tempfile.TemporaryDirectory() as directory:
         open_jtalk_rate=OPEN_JTALK_RATE,
     )
     narration_duration = float(tts_metadata["duration_seconds"])
+    physical_narration_duration = wav_duration(narration_wav)
+    if abs(narration_duration - physical_narration_duration) > 0.5:
+        raise SystemExit(
+            "Narration duration metadata disagrees with the physical WAV: "
+            f"metadata={narration_duration:.3f}s physical={physical_narration_duration:.3f}s"
+        )
+    if narration_duration > MAX_RENDER_DURATION_SECONDS:
+        raise SystemExit(
+            f"Refusing runaway render duration: {narration_duration:.3f}s "
+            f"(limit={MAX_RENDER_DURATION_SECONDS}s)"
+        )
+    print(
+        f"[render-timing] narration_seconds={narration_duration:.3f} "
+        f"physical_wav_seconds={physical_narration_duration:.3f}",
+        flush=True,
+    )
 
     probe_total = sum(probe_durations)
     if probe_total <= 0 or narration_duration <= 0:
@@ -346,6 +363,11 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
         "-movflags", "+faststart", str(temporary_output),
     ])
+    print(
+        f"[render-timing] main_ffmpeg_target_seconds={DURATION:.3f} "
+        f"story_images={len(STORY_IMAGES) if USE_STORY_IMAGES else 0}",
+        flush=True,
+    )
     try:
         subprocess.run(command, check=True)
         subprocess.run([
