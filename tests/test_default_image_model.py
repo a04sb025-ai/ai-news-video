@@ -17,7 +17,7 @@ class DefaultImageModelTest(unittest.TestCase):
 
     def test_generation_script_reads_model_from_config(self):
         source = (ROOT / "scripts/generate_story_images.py").read_text()
-        self.assertIn('"model": CONFIG["model"]', source)
+        self.assertRegex(source, r'"model"\\s*:\\s*CONFIG\\["model"\\]')
 
 
 if __name__ == "__main__":
