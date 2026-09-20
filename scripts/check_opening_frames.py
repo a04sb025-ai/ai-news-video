@@ -75,6 +75,12 @@ video, story_path, output_dir = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.a
 output_dir.mkdir(parents=True, exist_ok=True)
 story = json.loads(story_path.read_text())
 opening = story["script"][0]
+# Keep the existing safety check aligned with the *designed* daily opening layout.
+# Do not introduce another independent publish gate.
+opening_regions = dict(OPENING_REGIONS)
+if "content_hash" in story:
+    opening_regions["headline"] = (90, 445, 990, 775)
+    opening_regions["panel"] = (42, 410, 1038, 790)
 opening_contract = story.get("opening", {"start": opening["start"], "end": min(opening["end"], 3.0)})
 checks = {
     "opening_is_exactly_3s": opening_contract.get("start") == 0 and opening_contract.get("end") == 3,
@@ -113,7 +119,7 @@ layout_details = {
     "font_size_px": 106 if story.get("explanation_contract") == "four-page-v1" else 112,
     "required_minimum_font_size_px": 56,
     "safe_area_px": {"left": 90, "right": 90, "top": 160, "bottom": 260},
-    "headline_box_px": {"left": 112, "top": 225, "right": 990, "bottom": 565},
+    "headline_box_px": {"left": 112, "top": 475 if "content_hash" in story else 225, "right": 990, "bottom": 770 if "content_hash" in story else 565},
 }
 if "request_id" not in story:
     checks["headline_is_present"] = bool(opening["caption"].strip())
@@ -150,7 +156,7 @@ for seconds in opening_sample_seconds(opening_duration, FPS):
         "high_contrast": contrast >= 22,
         "regions": {
             name: region_metrics(ppm, *QA_FRAME_SIZE, bounds)
-            for name, bounds in OPENING_REGIONS.items()
+            for name, bounds in opening_regions.items()
         },
     }
     frames.append(result)
