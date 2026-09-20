@@ -75,7 +75,7 @@ class DailyStoryTest(unittest.TestCase):
   generator=(ROOT/"scripts/generate_story_images.py").read_text(); self.assertIn('story["image_scenes"]',generator); self.assertNotIn('" / ".join(claims)',generator)
  def test_image_budget_and_cache(self):
   story=daily.build_story(valid()); self.assertEqual(len(story["image_assets"]),4)
-  generator=(ROOT/"scripts/generate_story_images.py").read_text(); self.assertIn("destination.is_file()",generator); self.assertIn("if len(prompts) > 4",generator); self.assertIn("IMAGE_GENERATION_ATTEMPTS",generator); self.assertIn("RETRYABLE_HTTP_STATUSES",generator)
+  generator=(ROOT/"scripts/generate_story_images.py").read_text(); self.assertIn("destination.is_file()",generator); self.assertIn("if len(prompts)>MAX_IMAGES",generator); self.assertIn("IMAGE_GENERATION_ATTEMPTS",generator); self.assertIn("RETRYABLE_HTTP_STATUSES",generator)
  def test_generated_image_readiness_is_strict(self):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d); payload=valid(); story=daily.build_story(payload); image_dir=root/story["request_id"]/story["content_hash"]/"daily-editorial-v1"; story["image_asset_dir"]=str(image_dir); image_dir.mkdir(parents=True)
