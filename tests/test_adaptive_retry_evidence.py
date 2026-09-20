@@ -87,7 +87,7 @@ class AdaptiveRetryEvidenceTest(unittest.TestCase):
 
     def test_render_failure_still_gets_second_render(self):
         status, count, _ = self.exercise(render_failure=True)
-        self.assertEqual((status, count), (1, 1))
+        self.assertEqual((status, count), (1, 2))
 
     def test_missing_input_evidence_does_not_suppress_retry(self):
         status, count, _ = self.exercise(missing_asset=True)
