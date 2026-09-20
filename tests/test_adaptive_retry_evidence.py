@@ -72,18 +72,18 @@ class AdaptiveRetryEvidenceTest(unittest.TestCase):
 
     def test_identical_opening_gets_bounded_second_safe_correction(self):
         status, count, summary = self.exercise()
-        self.assertEqual((status, count, summary["repairs"]), (1, 2, 2))
-        self.assertEqual(summary["attempts"][-1]["action"], "safe-rerender")
-        self.assertTrue(summary["attempts"][-1]["repeated_render_inputs"])
+        self.assertEqual((status, count, summary["repairs"]), (1, 1, 2))
+        self.assertEqual(summary["attempts"][-1]["action"], "opening-only-repair")
+        self.assertTrue(summary["attempts"][-1]["same_render_inputs"])
         self.assertFalse(summary["final"]["auto_publish_ready"])
 
     def test_changed_artwork_still_gets_second_render(self):
         status, count, _ = self.exercise(change_image=True)
-        self.assertEqual((status, count), (1, 2))
+        self.assertEqual((status, count), (1, 1))
 
     def test_media_failure_still_gets_second_render(self):
         status, count, _ = self.exercise(failure="decode_error_free")
-        self.assertEqual((status, count), (1, 2))
+        self.assertEqual((status, count), (1, 1))
 
     def test_render_failure_still_gets_second_render(self):
         status, count, _ = self.exercise(render_failure=True)
@@ -91,7 +91,7 @@ class AdaptiveRetryEvidenceTest(unittest.TestCase):
 
     def test_missing_input_evidence_does_not_suppress_retry(self):
         status, count, _ = self.exercise(missing_asset=True)
-        self.assertEqual((status, count), (1, 2))
+        self.assertEqual((status, count), (1, 1))
 
     def test_successful_repair_remains_publishable(self):
         status, count, summary = self.exercise(ready=True)

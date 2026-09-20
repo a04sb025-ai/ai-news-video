@@ -104,7 +104,8 @@ class ThumbnailOpeningModesTest(unittest.TestCase):
 
     def test_self_heal_removes_stale_thumbnail_before_rerender(self):
         source = (ROOT / "scripts/self_heal_adaptive_daily_video.py").read_text()
-        self.assertIn('video.with_name(f"{video.stem}.thumbnail.jpg").unlink(missing_ok=True)', source)
+        self.assertIn('thumbnail = video.with_name(f"{video.stem}.thumbnail.jpg")', source)
+        self.assertIn("thumbnail.unlink(missing_ok=True)", source)
         self.assertIn('or not thumbnail.is_file()', source)
 
     def test_opening_qa_requires_v2_only_for_explicit_thumbnail_contract(self):

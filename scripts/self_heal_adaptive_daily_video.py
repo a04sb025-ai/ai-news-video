@@ -250,6 +250,27 @@ def main() -> int:
         image_seconds = _seconds(image_started)
         print(f"[timing] image_recovery_seconds={image_seconds} regenerated={regenerated}", flush=True)
 
+        # If the only blocker is missing generated images, rebuilding the same
+        # video without those images cannot make it publishable. Keep the
+        # existing render and diagnostics, rather than wasting another FFmpeg
+        # pass (the image generator already retried each missing scene).
+        if (result_is_complete(result)
+                and current_blockers == ["generated_images_not_ready"]
+                and not current_failed and not regenerated):
+            attempts.append({
+                "repair": repair,
+                "action": "stopped",
+                "reason": "missing-images-after-targeted-retry",
+                "rendered": False,
+                "regenerated_images": False,
+                "image_recovery_seconds": image_seconds,
+                "repair_seconds": _seconds(repair_started),
+                "failed_checks": current_failed,
+                "publish_blockers": current_blockers,
+            })
+            print("[self-heal] stopping: missing images; preserve current video and strict publish gate", flush=True)
+            break
+
         render_inputs = render_input_digest(story)
         same_inputs = (
             render_inputs is not None
