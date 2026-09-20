@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Generate cached editorial images for every adaptive explainer scene."""
-import base64, json, os, sys, time
+import base64, hashlib, json, os, sys, time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -14,6 +14,8 @@ RETRYABLE_HTTP_STATUSES = {408, 409, 429, 500, 502, 503, 504}
 IMAGE_GENERATION_ATTEMPTS = max(1, int(os.environ.get("IMAGE_GENERATION_ATTEMPTS", "3")))
 IMAGE_GENERATION_RETRY_SECONDS = max(0.0, float(os.environ.get("IMAGE_GENERATION_RETRY_SECONDS", "3")))
 IMAGE_GENERATION_WORKERS = max(1, min(4, int(os.environ.get("IMAGE_GENERATION_WORKERS", "3"))))
+# One extra serial attempt for missing scenes; never regenerate completed scenes.
+FAILED_SCENE_RETRIES = max(0, min(1, int(os.environ.get("IMAGE_FAILED_SCENE_RETRIES", "1"))))
 COMMON = (
     "Original vertical editorial scene for the AI Tool Watch series, grounded only in the verified news content. "
     "Deep navy and black field, restrained amber, violet and lavender accents, subtle paper grain, soft light, "
@@ -59,8 +61,10 @@ TEEN = {
 }
 
 class ImageGenerationError(RuntimeError):
-    def __init__(self, message, *, status=None, provider_error="", retryable=False, attempts=1):
-        super().__init__(message); self.status=status; self.provider_error=provider_error; self.retryable=retryable; self.attempts=attempts
+    def __init__(self, message, *, status=None, provider_error="", retryable=False, attempts=1, request_id=""):
+        super().__init__(message)
+        self.status=status; self.provider_error=provider_error; self.retryable=retryable
+        self.attempts=attempts; self.request_id=request_id
 
 def effective_quality():
     override=os.environ.get("IMAGE_GENERATION_QUALITY")
@@ -93,7 +97,7 @@ def request_generation(payload, api_key):
             with urlopen(request, timeout=300) as response: return json.load(response), attempt
         except HTTPError as error:
             status=int(getattr(error,"code",0) or 0); detail=provider_error_text(error); retryable=status in RETRYABLE_HTTP_STATUSES
-            last_error=ImageGenerationError(f"image provider HTTP {status}",status=status,provider_error=detail,retryable=retryable,attempts=attempt)
+            last_error=ImageGenerationError(f"image provider HTTP {status}",status=status,provider_error=detail,retryable=retryable,attempts=attempt,request_id=error.headers.get("x-request-id", ""))
             if not retryable or attempt>=IMAGE_GENERATION_ATTEMPTS: raise last_error from error
         except URLError as error:
             last_error=ImageGenerationError("image provider network error",provider_error=str(getattr(error,"reason",""))[:500],retryable=True,attempts=attempt)
@@ -111,28 +115,91 @@ def generate(destination,prompt,api_key,quality):
     temporary=destination.with_suffix(".png.part"); temporary.write_bytes(base64.b64decode(data,validate=True)); temporary.replace(destination)
     print(f"generated {destination.relative_to(ROOT)} quality={quality} attempts={attempts}"); return {"result":"generated","attempts":attempts}
 
+def generate_pending_scenes(output, prompts, key, quality, log):
+    """Generate independently and retry only missing scenes once, serially.
+
+    Keep successful files cached. A safety rejection is not overridden: the same
+    verified prompt gets one bounded retry and the publish gate remains strict.
+    """
+    results = {}
+    failures = {}
+
+    def run_scene(name, prompt, *, retry=False):
+        try:
+            outcome = generate(output / name, prompt, key, quality)
+            results[name] = {"file": name, **outcome, "serial_retry": retry}
+            failures.pop(name, None)
+        except (ImageGenerationError, RuntimeError, ValueError, KeyError) as error:
+            details = {
+                "file": name,
+                "error": type(error).__name__,
+                "status": getattr(error, "status", None),
+                "provider_error": getattr(error, "provider_error", str(error))[:500],
+                "request_id": getattr(error, "request_id", ""),
+                "attempts": getattr(error, "attempts", 1),
+                "serial_retry": retry,
+                "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+                "prompt": prompt,
+            }
+            failures[name] = details
+            print(
+                f"scene {name} generation failed: {details['error']} "
+                f"status={details['status']} request_id={details['request_id']}",
+                file=sys.stderr,
+                flush=True,
+            )
+
+    with ThreadPoolExecutor(max_workers=min(IMAGE_GENERATION_WORKERS, len(prompts))) as executor:
+        futures = {executor.submit(generate, output / name, prompt, key, quality): name
+                   for name, prompt in prompts.items()}
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                outcome = future.result()
+                results[name] = {"file": name, **outcome, "serial_retry": False}
+            except (ImageGenerationError, RuntimeError, ValueError, KeyError) as error:
+                prompt = prompts[name]
+                failures[name] = {
+                    "file": name,
+                    "error": type(error).__name__,
+                    "status": getattr(error, "status", None),
+                    "provider_error": getattr(error, "provider_error", str(error))[:500],
+                    "request_id": getattr(error, "request_id", ""),
+                    "attempts": getattr(error, "attempts", 1),
+                    "serial_retry": False,
+                    "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+                    "prompt": prompt,
+                }
+                print(f"scene {name} generation failed: {type(error).__name__} "
+                      f"status={failures[name]['status']} request_id={failures[name]['request_id']}",
+                      file=sys.stderr, flush=True)
+
+    log["initial_failed_scenes"] = list(failures)
+    for name in list(failures):
+        if FAILED_SCENE_RETRIES and failures[name]["status"] not in (401, 402, 403):
+            print(f"retrying only missing scene {name} serially", flush=True)
+            run_scene(name, prompts[name], retry=True)
+
+    log["images"] = [results[name] for name in prompts if name in results]
+    log["failures"] = [failures[name] for name in prompts if name in failures]
+    log["status"] = "complete" if not failures else "partial-failure"
+    if failures:
+        log["reason"] = "One or more scene images could not be generated; publish gate remains blocked"
+    return not failures
+
+
 def main():
     if len(sys.argv)==2: output,prompts=story_prompts(Path(sys.argv[1]))
     else: output=ROOT/CONFIG["output_directory"]/CONFIG["prompt_version"]; prompts={name:COMMON+detail for name,detail in TEEN.items()}
     if len(prompts)>MAX_IMAGES: raise SystemExit(f"image budget exceeded: maximum is {MAX_IMAGES}")
+    if not prompts: raise SystemExit("image scene list is empty")
     output.mkdir(parents=True,exist_ok=True); quality=effective_quality()
-    log={"prompt_version":"daily-editorial-v6-shorts-ui-safe" if len(sys.argv)==2 else CONFIG["prompt_version"],"content_hash":json.loads(Path(sys.argv[1]).read_text()).get("content_hash") if len(sys.argv)==2 else None,"maximum":MAX_IMAGES,"configured_quality":CONFIG["quality"],"effective_quality":quality,"model":CONFIG["model"],"news_date":os.environ.get("NEWS_DATE"),"request_attempts":IMAGE_GENERATION_ATTEMPTS,"generation_workers":min(IMAGE_GENERATION_WORKERS,len(prompts)),"expected_images":list(prompts),"images":[]}
+    log={"prompt_version":"daily-editorial-v6-shorts-ui-safe" if len(sys.argv)==2 else CONFIG["prompt_version"],"content_hash":json.loads(Path(sys.argv[1]).read_text()).get("content_hash") if len(sys.argv)==2 else None,"maximum":MAX_IMAGES,"configured_quality":CONFIG["quality"],"effective_quality":quality,"model":CONFIG["model"],"news_date":os.environ.get("NEWS_DATE"),"request_attempts":IMAGE_GENERATION_ATTEMPTS,"failed_scene_retries":FAILED_SCENE_RETRIES,"generation_workers":min(IMAGE_GENERATION_WORKERS,len(prompts)),"expected_images":list(prompts),"images":[],"failures":[]}
     key=os.environ.get(CONFIG["api_key_env"])
     if not key:
         log["status"]="fallback"; log["reason"]=f"{CONFIG['api_key_env']} not configured"; (output/"image-generation-log.json").write_text(json.dumps(log,indent=2)+"\n"); print(log["reason"]+"; renderer will use fallback",file=sys.stderr); return 2
-    try:
-        # Scene images are independent. Bounded concurrency prevents a 9-10 scene story from
-        # serially consuming most of the Actions job timeout while keeping API pressure modest.
-        results={}
-        with ThreadPoolExecutor(max_workers=min(IMAGE_GENERATION_WORKERS,len(prompts))) as executor:
-            futures={executor.submit(generate,output/name,prompt,key,quality):name for name,prompt in prompts.items()}
-            for future in as_completed(futures): results[futures[future]]=future.result()
-        log["images"]=[{"file":name,**results[name]} for name in prompts]
-        log["status"]="complete"
-    except (ImageGenerationError,RuntimeError,ValueError,KeyError) as error:
-        log["status"]="fallback"; log["reason"]=type(error).__name__
-        if isinstance(error,ImageGenerationError): log.update({"http_status":error.status,"provider_error":error.provider_error,"retryable":error.retryable,"attempts":error.attempts})
-        print(f"image generation failed ({type(error).__name__})"+(f" status={error.status}" if isinstance(error,ImageGenerationError) and error.status else "")+(f" detail={error.provider_error}" if isinstance(error,ImageGenerationError) and error.provider_error else "")+"; renderer will use fallback",file=sys.stderr)
-    (output/"image-generation-log.json").write_text(json.dumps(log,ensure_ascii=False,indent=2)+"\n"); return 0 if log["status"]=="complete" else 1
+    complete = generate_pending_scenes(output, prompts, key, quality, log)
+    (output/"image-generation-log.json").write_text(json.dumps(log,ensure_ascii=False,indent=2)+"\n")
+    return 0 if complete else 1
 
 if __name__=="__main__": raise SystemExit(main())
