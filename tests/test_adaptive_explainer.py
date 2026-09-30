@@ -72,7 +72,7 @@ class AdaptiveExplainerTest(unittest.TestCase):
         self.assertIn("OPEN_JTALK_RATE = 1.10", renderer)
         self.assertIn("FINAL_END_PAUSE_SECONDS = 0.18", renderer)
         self.assertIn('narration_chunks = [ensure_terminal_pause(cue["narration"])', renderer)
-        self.assertIn('narration_text = " ".join(narration_chunks)', renderer)
+        self.assertIn('narration_text = "\\n\\n".join(narration_chunks)', renderer)
         self.assertIn("tts_metadata = synthesize_published_narration(", renderer)
         self.assertNotIn('narration.write_text("\\n".join', renderer)
         self.assertIn('narration_wav = tmp / "voice-single-pass.wav"', renderer)
