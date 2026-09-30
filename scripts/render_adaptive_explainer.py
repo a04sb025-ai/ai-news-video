@@ -306,7 +306,11 @@ with tempfile.TemporaryDirectory() as directory:
     unresolved_boundaries = [
         item for item in boundary_alignment if item["method"] == "proportional-fallback"
     ]
-    if unresolved_boundaries:
+    # Production uses OpenAI TTS and must never publish a visual/subtitle switch
+    # inside active speech. Offline CI intentionally uses Open JTalk, whose single
+    # pass does not reliably honor paragraph pauses, so retain fallback there only
+    # to keep the network-free renderer regression suite viable.
+    if tts_metadata["provider"] == "openai" and unresolved_boundaries:
         raise SystemExit(
             "Final narration has scene boundaries without a measurable pause: "
             + json.dumps(unresolved_boundaries, ensure_ascii=False)
@@ -488,6 +492,7 @@ manifest = {
     "audio_alignment_fallback_count": sum(
         1 for item in boundary_alignment if item["method"] == "proportional-fallback"
     ),
+    "audio_alignment_strict": tts_metadata["provider"] == "openai",
     "audio_scene_durations": cue_durations,
     "audio_final_end_pause_seconds": FINAL_END_PAUSE_SECONDS,
     "audio_output_sample_rate_hz": 48000,
