@@ -102,10 +102,10 @@ class AudioTimingTest(unittest.TestCase):
             [{"start": 3.8, "end": 4.1, "duration": 0.3}],
             search_seconds=0.5,
         )
-        self.assertEqual(len(segments), 2)
-        self.assertEqual(segments[0]["text"], "最初の説明です。次の説明です。")
-        self.assertAlmostEqual(segments[0]["end"], 3.88, delta=0.02)
-        self.assertEqual(segments[1]["text"], "最後です。")
+        self.assertEqual(len(segments), 1)
+        self.assertEqual(segments[0]["text"], "最初の説明です。次の説明です。最後です。")
+        self.assertEqual(segments[0]["start"], 0.0)
+        self.assertEqual(segments[0]["end"], 6.0)
 
     def test_scene_boundary_accepts_later_real_pause_in_wider_audio_led_window(self):
         probes = [2.0, 2.0]
