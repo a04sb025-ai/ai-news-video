@@ -109,6 +109,23 @@ def add_timed_subtitles(events, cue):
         ))
 
 
+def add_opening_timed_subtitles(events, cue, visible_start):
+    """Show only the phrase that is actually being spoken after the 3s thumbnail window."""
+    for segment in cue.get("subtitleSegments", []):
+        start = max(float(segment["start"]), float(visible_start))
+        end = float(segment["end"])
+        if end <= start:
+            continue
+        events.append(dialogue(
+            start,
+            end,
+            "Subtitle",
+            wrap_timed_subtitle(segment["text"]),
+            r"\pos(90,535)\fs44\fad(60,60)",
+            7,
+        ))
+
+
 def add_body_page(events, cue, start, end, *, fade=True):
     """Keep every important body-text layer above Shorts metadata and left of the action rail."""
     if end <= start:
@@ -131,7 +148,8 @@ def add_opening_body_page(events, cue, start, end):
     events.append(dialogue(start, end, "Eyebrow", cue["label"], rf"\pos(90,188){fade_tag}", 5))
     events.append(dialogue(start, end, "SectionHeadline", cue["caption"], rf"\pos(90,250)\fs64{fade_tag}", 6))
     events.append(dialogue(start, end, "Support", cue["support_text"], rf"\pos(90,425)\fs40{fade_tag}", 6))
-    events.append(dialogue(start, end, "Subtitle", cue["subtitle"], rf"\pos(90,535)\fs44{fade_tag}", 7))
+    if not cue.get("subtitleSegments"):
+        events.append(dialogue(start, end, "Subtitle", cue["subtitle"], rf"\pos(90,535)\fs44{fade_tag}", 7))
 
 
 def add_opening(events, cue):
@@ -307,7 +325,7 @@ with tempfile.TemporaryDirectory() as directory:
         cue["audioLedSceneDuration"] = cue_duration
         cue["timingSource"] = "single-pass-final-wav"
 
-        if 0 < index < page_count:
+        if index < page_count:
             source_subtitle = cue.get("source_subtitle") or str(cue.get("subtitle", "")).replace("\\N", " ").replace("\n", " ")
             cue["subtitleSegments"] = align_subtitle_segments(
                 source_subtitle,
@@ -366,6 +384,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         if index == 0:
             add_opening(events, cue)
             add_opening_body_page(events, cue, OPENING_END, end)
+            add_opening_timed_subtitles(events, cue, OPENING_END)
         elif index < len(page_cues):
             add_body_page(events, cue, start, end)
             add_timed_subtitles(events, cue)
@@ -463,6 +482,7 @@ manifest = {
     "audio_output_sample_rate_hz": 48000,
     "subtitle_timing_source": "final-wav-pause-assisted-v1",
     "subtitle_segment_count": sum(len(cue.get("subtitleSegments", [])) for cue in page_cues),
+    "static_image_input_fps": FPS,
     "audio_tempo_adjustment": False,
     "full_narration_subtitles": True,
     "subtitle_font_size_px": 48,
