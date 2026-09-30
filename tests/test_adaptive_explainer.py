@@ -79,7 +79,7 @@ class AdaptiveExplainerTest(unittest.TestCase):
         self.assertIn("silence_regions = detect_silence_regions(narration_wav)", renderer)
         self.assertIn("scene_boundaries, boundary_alignment = snap_scene_boundaries(", renderer)
         self.assertIn('DURATION = round(narration_duration + FINAL_END_PAUSE_SECONDS, 4)', renderer)
-        self.assertIn('"audio_pipeline": "single-pass-natural-tts-audio-led-v4"', renderer)
+        self.assertIn('"audio_pipeline": "single-pass-natural-tts-audio-led-v5"', renderer)
         self.assertIn('"audio_tts_provider": tts_metadata["provider"]', renderer)
         self.assertIn('"audio_open_jtalk_probe_rate": OPEN_JTALK_RATE', renderer)
         self.assertIn('"audio_single_pass": True', renderer)
