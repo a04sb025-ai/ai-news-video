@@ -99,7 +99,10 @@ def synthesize_open_jtalk(
     rate: float,
 ) -> dict:
     source = output.with_suffix(".txt")
-    source.write_text(text.strip() + "\n")
+    # Open JTalk can stop reading at blank lines. Production OpenAI TTS receives
+    # paragraph breaks to create cue pauses, but the deterministic offline fallback
+    # must flatten them so the entire narration is still synthesized.
+    source.write_text(" ".join(text.split()) + "\n")
     subprocess.run([
         "open_jtalk", "-x", str(dictionary), "-m", str(voice), "-r", str(rate),
         "-ow", str(output), str(source),
