@@ -30,11 +30,22 @@ COMMON = (
     "Do not draw Mozo or any substitute mascot; the renderer adds the canonical character. "
     "No words, letters, numbers, logos, watermark, or readable fake UI. Show the news meaning, not AI as a symbol. "
 )
+OPENING_POSTER = (
+    "Opening art direction: poster-grade vertical editorial key art, not a generic explainer illustration. "
+    "Create an arresting premium news-poster image with cinematic depth, crisp high-contrast lighting, realistic material detail, "
+    "and a clear foreground, midground, and background hierarchy that still reads at phone-thumbnail size. "
+    "Use one dominant subject plus at most one contextual environment; make the subject large, specific, and visually decisive. "
+    "Let the verified event drive one semantic accent: a verified stop, outage, regulation, or warning may use one controlled saturated red interruption, "
+    "barrier, pause-like geometric cue, or red light; launches and product progress may use controlled cyan or blue energy; partnerships may show one clear connection between the verified parties. "
+    "Do not force a visual metaphor when it is not supported by the verified content. "
+    "The composition may vary freely from story to story; never repeat a fixed thumbnail template just for consistency. "
+    "Keep the result sophisticated and editorial rather than sensational, while making it strong enough to stop a mobile scroll. "
+)
 OPENING_LAYOUT = (
-    "Opening split-layout rule: keep the entire top 38 percent of the canvas as deliberate text-safe negative space, "
+    "Opening split-layout rule: keep the entire top 44 percent of the canvas as deliberate text-safe negative space, "
     "using only a calm low-detail continuation of the background. Do not place any face, person, machine, building, chart, "
-    "focal object, bright highlight, or essential visual evidence in that top zone. Place the dominant news subject fully below 42 percent of the canvas height, "
-    "with its important details concentrated roughly between 42 and 82 percent. Keep the lower-left corner relatively quiet for the small canonical Mozo overlay. "
+    "focal object, bright highlight, or essential visual evidence in that top zone. Place the dominant news subject fully below 46 percent of the canvas height, "
+    "with its important details concentrated roughly between 46 and 88 percent. Keep the lower-left corner relatively quiet for the small canonical Mozo overlay. "
     "The renderer places typography directly on the negative space, so do not paint a title card, dark text panel, banner, box, fake headline area, or other shape intended to sit "
     "behind text. The result must remain one continuous full-frame editorial illustration rather than two separate boxes. "
 )
@@ -49,8 +60,8 @@ BODY_LAYOUT = (
     "Preserve one-page-one-message: one dominant visual relationship, no collage of unrelated secondary symbols. "
 )
 THUMBNAIL_STYLE = {
-    "A": "Opening thumbnail mode A (breaking-headline mood): create one concrete high-tension news scene that communicates risk, conflict, regulation, security, outage, or another verified problem immediately. Use composition and subject interaction for urgency, not warning-icon collages, fake sirens, sensational disaster imagery, or unsupported danger. ",
-    "B": "Opening thumbnail mode B (editorial magazine-cover mood): make one strong editorial hero scene around the central trend, industry shift, new concept, or why-this-matters angle. Prioritize an identifiable subject and a sophisticated magazine-cover composition, not an infographic. ",
+    "A": "Opening thumbnail mode A (breaking-headline mood): create one concrete high-tension news scene that communicates risk, conflict, regulation, security, outage, or another verified problem immediately. Prefer a single controlled saturated red accent against deep navy and cyan when the verified event involves stopping, blocking, warning, or interruption. Use composition and subject interaction for urgency, not warning-icon collages, fake sirens, sensational disaster imagery, or unsupported danger. ",
+    "B": "Opening thumbnail mode B (editorial magazine-cover mood): make one strong editorial hero scene around the central trend, industry shift, new concept, or why-this-matters angle. Use controlled cyan and electric-blue light for depth when appropriate, with one large identifiable subject and premium magazine-cover composition, not an infographic. ",
     "C": "Opening thumbnail mode C (simple declarative poster mood): show one immediately recognizable object, action, or before/after idea that makes the user-facing change obvious. Keep the composition minimal with generous negative space and no secondary decorative objects. ",
 }
 TEEN = {
@@ -79,7 +90,7 @@ def story_prompts(path):
     story=json.loads(path.read_text()); scenes=story["image_scenes"]; prompts={}
     for name, scene in zip(story["image_assets"], scenes):
         intent=scene.get("visual_intent", ""); visual_type=scene.get("visual_type", "editorial"); visuals=", ".join(scene.get("key_visuals", [])); thumbnail_style=scene.get("thumbnail_style")
-        prompts[name]=(COMMON + ((OPENING_LAYOUT + THUMBNAIL_STYLE.get(thumbnail_style, "")) if thumbnail_style else BODY_LAYOUT) + f" Scene role: {scene['role']}." + f" Visual explanation type: {visual_type}." + (f" Visual intent: {intent}." if intent else "") + (f" Required concrete visual elements: {visuals}." if visuals else "") + f" Depict only this verified context: {scene['verified_content']}")
+        prompts[name]=(COMMON + ((OPENING_POSTER + OPENING_LAYOUT + THUMBNAIL_STYLE.get(thumbnail_style, "")) if thumbnail_style else BODY_LAYOUT) + f" Scene role: {scene['role']}." + f" Visual explanation type: {visual_type}." + (f" Visual intent: {intent}." if intent else "") + (f" Required concrete visual elements: {visuals}." if visuals else "") + f" Depict only this verified context: {scene['verified_content']}")
     return ROOT / story["image_asset_dir"], prompts
 
 def provider_error_text(error):
@@ -194,7 +205,7 @@ def main():
     if len(prompts)>MAX_IMAGES: raise SystemExit(f"image budget exceeded: maximum is {MAX_IMAGES}")
     if not prompts: raise SystemExit("image scene list is empty")
     output.mkdir(parents=True,exist_ok=True); quality=effective_quality()
-    log={"prompt_version":"daily-editorial-v6-shorts-ui-safe" if len(sys.argv)==2 else CONFIG["prompt_version"],"content_hash":json.loads(Path(sys.argv[1]).read_text()).get("content_hash") if len(sys.argv)==2 else None,"maximum":MAX_IMAGES,"configured_quality":CONFIG["quality"],"effective_quality":quality,"model":CONFIG["model"],"news_date":os.environ.get("NEWS_DATE"),"request_attempts":IMAGE_GENERATION_ATTEMPTS,"failed_scene_retries":FAILED_SCENE_RETRIES,"generation_workers":min(IMAGE_GENERATION_WORKERS,len(prompts)),"expected_images":list(prompts),"images":[],"failures":[]}
+    log={"prompt_version":"daily-editorial-v7-poster-grade" if len(sys.argv)==2 else CONFIG["prompt_version"],"content_hash":json.loads(Path(sys.argv[1]).read_text()).get("content_hash") if len(sys.argv)==2 else None,"maximum":MAX_IMAGES,"configured_quality":CONFIG["quality"],"effective_quality":quality,"model":CONFIG["model"],"news_date":os.environ.get("NEWS_DATE"),"request_attempts":IMAGE_GENERATION_ATTEMPTS,"failed_scene_retries":FAILED_SCENE_RETRIES,"generation_workers":min(IMAGE_GENERATION_WORKERS,len(prompts)),"expected_images":list(prompts),"images":[],"failures":[]}
     key=os.environ.get(CONFIG["api_key_env"])
     if not key:
         log["status"]="fallback"; log["reason"]=f"{CONFIG['api_key_env']} not configured"; (output/"image-generation-log.json").write_text(json.dumps(log,indent=2)+"\n"); print(log["reason"]+"; renderer will use fallback",file=sys.stderr); return 2
