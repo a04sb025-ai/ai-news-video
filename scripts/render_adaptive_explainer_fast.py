@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Run the adaptive renderer with CPU-safe ffmpeg settings for static artwork.
 
-The adaptive video uses still PNG/JPEG artwork. Feeding those stills to ffmpeg at
-30 fps makes ffmpeg decode and scale the same pixels thousands of times even
-though the image never changes. This wrapper keeps the encoded master at 30 fps,
-but feeds looped still inputs at 1 fps so framesync repeats the static frame.
-It also swaps the main libx264 preset from medium to veryfast while lowering CRF
-to 21 so the speedup does not come from intentionally lowering visual quality.
+The adaptive video uses still PNG/JPEG artwork. Earlier versions fed looped still
+inputs at 1 fps as a CPU optimization, but ffmpeg framesync could briefly surface
+a future scene frame around integer-second input timestamps. Keep still inputs at
+the renderer's native 30 fps so scene overlays remain presentation-stable. This
+wrapper now limits optimization to the libx264 preset/CRF, which does not alter
+the visual timeline.
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ ORIGINAL_RENDERER = Path(__file__).with_name("render_adaptive_explainer.py")
 def optimize_ffmpeg_command(command: Sequence[str]) -> tuple[list[str], dict[str, object]]:
     """Return an equivalent command that avoids redundant static-frame work."""
     optimized = [str(part) for part in command]
-    still_inputs = 0
+    still_inputs_preserved = 0
 
     for index in range(max(0, len(optimized) - 3)):
         if (
@@ -31,8 +31,9 @@ def optimize_ffmpeg_command(command: Sequence[str]) -> tuple[list[str], dict[str
             and optimized[index + 2] == "-framerate"
             and optimized[index + 3] == "30"
         ):
-            optimized[index + 3] = "1"
-            still_inputs += 1
+            # Do not retime still inputs to 1 fps. The CPU saving is not worth a
+            # one-frame scene leak when overlay framesync refreshes on integer PTS.
+            still_inputs_preserved += 1
 
     preset_changed = False
     if "-c:v" in optimized and "libx264" in optimized and "-preset" in optimized:
@@ -45,7 +46,8 @@ def optimize_ffmpeg_command(command: Sequence[str]) -> tuple[list[str], dict[str
                 optimized[insert_at:insert_at] = ["-crf", "21"]
 
     return optimized, {
-        "still_inputs_retimed": still_inputs,
+        "still_inputs_retimed": 0,
+        "still_inputs_preserved_30fps": still_inputs_preserved,
         "x264_preset_changed": preset_changed,
     }
 
@@ -56,12 +58,12 @@ def main() -> None:
     def optimized_run(command, *args, **kwargs):
         if isinstance(command, (list, tuple)) and command and Path(str(command[0])).name == "ffmpeg":
             effective, metadata = optimize_ffmpeg_command(command)
-            changed = bool(metadata["still_inputs_retimed"] or metadata["x264_preset_changed"])
+            changed = bool(metadata["x264_preset_changed"])
             started = time.monotonic()
             if changed:
                 print(
                     "[render-optimization] "
-                    f"still_inputs_30fps_to_1fps={metadata['still_inputs_retimed']} "
+                    f"still_inputs_preserved_30fps={metadata['still_inputs_preserved_30fps']} "
                     f"x264_veryfast={metadata['x264_preset_changed']}",
                     flush=True,
                 )
