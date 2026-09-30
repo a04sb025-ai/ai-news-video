@@ -6,10 +6,12 @@ from array import array
 from pathlib import Path
 
 from scripts.audio_timing import (
+    align_subtitle_segments,
     detect_silence_regions,
     ensure_terminal_pause,
     proportional_boundary_targets,
     snap_scene_boundaries,
+    split_subtitle_text,
 )
 
 
@@ -69,6 +71,28 @@ class AudioTimingTest(unittest.TestCase):
         self.assertAlmostEqual(boundaries[1], 2.32, delta=0.01)
         self.assertLess(abs(boundaries[0] - targets[0]), 0.2)
         self.assertLess(abs(boundaries[1] - targets[1]), 0.2)
+
+
+    def test_subtitle_text_prefers_authored_phrase_boundaries(self):
+        chunks = split_subtitle_text("最初の説明です。次の説明です。最後です。", max_chunks=3)
+        self.assertEqual(chunks, ["最初の説明です。", "次の説明です。", "最後です。"])
+
+    def test_subtitle_segments_snap_phrase_changes_to_final_wav_pauses(self):
+        regions = [
+            {"start": 1.8, "end": 2.1, "duration": 0.3},
+            {"start": 3.8, "end": 4.1, "duration": 0.3},
+        ]
+        segments = align_subtitle_segments(
+            "最初の説明です。次の説明です。最後です。",
+            0.0,
+            6.0,
+            regions,
+        )
+        self.assertEqual(len(segments), 3)
+        self.assertAlmostEqual(segments[0]["end"], 1.88, delta=0.02)
+        self.assertAlmostEqual(segments[1]["end"], 3.88, delta=0.02)
+        self.assertEqual("".join(segment["text"] for segment in segments), "最初の説明です。次の説明です。最後です。")
+
 
     def test_far_silence_is_not_used_for_wrong_scene(self):
         probes = [1.0, 1.0, 1.0]
