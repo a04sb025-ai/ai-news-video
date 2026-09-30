@@ -11,7 +11,7 @@ import tempfile
 import wave
 from pathlib import Path
 
-from audio_timing import detect_silence_regions, ensure_terminal_pause, snap_scene_boundaries
+from audio_timing import align_subtitle_segments, detect_silence_regions, ensure_terminal_pause, snap_scene_boundaries
 from narration_tts import synthesize_published_narration, wav_duration
 
 story_path, output = map(Path, sys.argv[1:3])
@@ -85,6 +85,30 @@ def rect_path(x, y, width, height):
     return f"m {x} {y} l {x + width} {y} {x + width} {y + height} {x} {y + height}"
 
 
+def wrap_timed_subtitle(value, width=17):
+    """Wrap one short timed subtitle segment without changing its wording."""
+    text = " ".join(str(value).replace("\n", " ").split()).strip()
+    if not text:
+        return ""
+    return "\n".join(text[index:index + width] for index in range(0, len(text), width))
+
+
+def add_timed_subtitles(events, cue):
+    for segment in cue.get("subtitleSegments", []):
+        start = float(segment["start"])
+        end = float(segment["end"])
+        if end <= start:
+            continue
+        events.append(dialogue(
+            start,
+            end,
+            "Subtitle",
+            wrap_timed_subtitle(segment["text"]),
+            r"\pos(72,1090)\fad(60,60)",
+            7,
+        ))
+
+
 def add_body_page(events, cue, start, end, *, fade=True):
     """Keep every important body-text layer above Shorts metadata and left of the action rail."""
     if end <= start:
@@ -94,7 +118,8 @@ def add_body_page(events, cue, start, end, *, fade=True):
     events.append(dialogue(start, end, "Eyebrow", cue["label"], rf"\pos(72,760){fade_tag}", 5))
     events.append(dialogue(start, end, "SectionHeadline", cue["caption"], rf"\pos(72,820){fade_tag}", 6))
     events.append(dialogue(start, end, "Support", cue["support_text"], rf"\pos(72,970){fade_tag}", 6))
-    events.append(dialogue(start, end, "Subtitle", cue["subtitle"], rf"\pos(72,1090){fade_tag}", 7))
+    if not cue.get("subtitleSegments"):
+        events.append(dialogue(start, end, "Subtitle", cue["subtitle"], rf"\pos(72,1090){fade_tag}", 7))
 
 
 def add_opening_body_page(events, cue, start, end):
@@ -259,15 +284,43 @@ with tempfile.TemporaryDirectory() as directory:
     )
     timeline = [0.0, *scene_boundaries, narration_duration + FINAL_END_PAUSE_SECONDS]
     cue_durations = []
+    page_count = max(0, len(story["script"]) - 1)
     for index, cue in enumerate(story["script"]):
         start = round(timeline[index], 4)
         end = round(timeline[index + 1], 4)
+        cue_duration = round(end - start, 4)
         cue["start"] = start
         cue["end"] = end
-        cue_durations.append(round(end - start, 4))
+        cue_durations.append(cue_duration)
+
+        # The final published WAV is the source of truth. Persist real speech timing
+        # back into story.json so downstream QA never compares the render against
+        # stale Open JTalk probe durations.
+        if index < len(boundary_alignment):
+            silence_start = boundary_alignment[index].get("silence_start")
+            speech_end = min(end, float(silence_start)) if silence_start is not None else end
+        else:
+            speech_end = max(start, end - FINAL_END_PAUSE_SECONDS)
+        speech_duration = round(max(0.0, speech_end - start), 4)
+        cue["narrationDuration"] = speech_duration
+        cue["measuredNarrationDuration"] = speech_duration
+        cue["audioLedSceneDuration"] = cue_duration
+        cue["timingSource"] = "single-pass-final-wav"
+
+        if 0 < index < page_count:
+            source_subtitle = cue.get("source_subtitle") or str(cue.get("subtitle", "")).replace("\\N", " ").replace("\n", " ")
+            cue["subtitleSegments"] = align_subtitle_segments(
+                source_subtitle,
+                start,
+                speech_end,
+                silence_regions,
+            )
+        else:
+            cue.pop("subtitleSegments", None)
 
     DURATION = round(narration_duration + FINAL_END_PAUSE_SECONDS, 4)
     story["expected_duration_seconds"] = round(DURATION, 2)
+    story["timing_contract"] = "single-pass-final-wav-audio-led-v5"
     OPENING_END = min(3.0, float(story["script"][0]["end"]))
     THUMBNAIL_RENDER_SECONDS = min(0.5, max(0.1, OPENING_END / 2))
     story_path.write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n")
@@ -315,6 +368,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             add_opening_body_page(events, cue, OPENING_END, end)
         elif index < len(page_cues):
             add_body_page(events, cue, start, end)
+            add_timed_subtitles(events, cue)
         else:
             events.append(vector(start, end, rect_path(190, 760, 700, 8), "58D6FF", r"\fad(100,120)", 2))
             events.append(dialogue(start, end, "Outro", "今日のAIニュース", r"\pos(540,880)\fs58\fad(100,120)", 3))
@@ -359,8 +413,8 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 
     command.extend(["-filter_complex", "".join(filters), "-map", "[video]", "-map", "1:a"])
     command.extend([
-        "-af", f"apad=pad_dur={DURATION},loudnorm=I=-16:TP=-1.5:LRA=11", "-t", str(DURATION),
-        "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
+        "-af", f"apad=pad_dur={DURATION},loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000", "-t", str(DURATION),
+        "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "48000",
         "-movflags", "+faststart", str(temporary_output),
     ])
     print(
@@ -406,6 +460,9 @@ manifest = {
     ),
     "audio_scene_durations": cue_durations,
     "audio_final_end_pause_seconds": FINAL_END_PAUSE_SECONDS,
+    "audio_output_sample_rate_hz": 48000,
+    "subtitle_timing_source": "final-wav-pause-assisted-v1",
+    "subtitle_segment_count": sum(len(cue.get("subtitleSegments", [])) for cue in page_cues),
     "audio_tempo_adjustment": False,
     "full_narration_subtitles": True,
     "subtitle_font_size_px": 48,
