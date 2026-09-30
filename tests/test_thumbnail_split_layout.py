@@ -7,11 +7,14 @@ ROOT = Path(__file__).resolve().parents[1]
 class ThumbnailSplitLayoutTest(unittest.TestCase):
     def test_opening_image_prompt_reserves_text_and_visual_zones(self):
         source = (ROOT / "scripts/generate_story_images.py").read_text()
-        self.assertIn("top 38 percent", source)
-        self.assertIn("fully below 42 percent", source)
+        self.assertIn("top 44 percent", source)
+        self.assertIn("fully below 46 percent", source)
         self.assertIn("lower-left corner relatively quiet", source)
+        self.assertIn("poster-grade vertical editorial key art", source)
+        self.assertIn("controlled saturated red accent", source)
+        self.assertIn("never repeat a fixed thumbnail template", source)
         self.assertIn("do not paint a title card, dark text panel, banner, box", source)
-        self.assertIn("daily-editorial-v6-shorts-ui-safe", source)
+        self.assertIn("daily-editorial-v7-poster-grade", source)
 
     def test_renderer_does_not_cover_opening_with_large_dark_panels(self):
         renderer = (ROOT / "scripts/render_adaptive_explainer.py").read_text()

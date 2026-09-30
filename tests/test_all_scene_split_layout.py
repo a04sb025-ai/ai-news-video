@@ -14,7 +14,7 @@ class AllSceneSplitLayoutTest(unittest.TestCase):
         self.assertIn("between 8 and 36 percent", source)
         self.assertIn("else BODY_LAYOUT", source)
         self.assertIn("one-page-one-message", source)
-        self.assertIn("daily-editorial-v6-shorts-ui-safe", source)
+        self.assertIn("daily-editorial-v7-poster-grade", source)
 
     def test_body_renderer_keeps_critical_copy_above_platform_metadata(self):
         renderer = (ROOT / "scripts/render_adaptive_explainer.py").read_text()
