@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from array import array
 import math
+import re
 import sys
 import wave
 from pathlib import Path
@@ -86,6 +87,103 @@ def detect_silence_regions(
         regions.append({"start": region_start, "end": region_end, "duration": region_end - region_start})
     return regions
 
+
+
+def split_subtitle_text(text: str, *, max_chunks: int = 3, soft_chars: int = 24) -> list[str]:
+    """Split viewer subtitle text at authored Japanese phrase boundaries.
+
+    Sentence punctuation is preferred. A long single sentence may split at commas,
+    but words are never rewritten or dropped.
+    """
+    value = " ".join(str(text).replace("\n", " ").split()).strip()
+    if not value:
+        return []
+
+    chunks = [part.strip() for part in re.findall(r"[^。！？!?]+[。！？!?]?", value) if part.strip()]
+    if len(chunks) == 1 and len(value) > soft_chars:
+        comma_chunks = [part.strip() for part in re.findall(r"[^、，,]+[、，,]?", value) if part.strip()]
+        if len(comma_chunks) > 1:
+            chunks = comma_chunks
+
+    while len(chunks) > max_chunks:
+        # Merge the lightest adjacent pair so order and wording remain unchanged.
+        pair_index = min(
+            range(len(chunks) - 1),
+            key=lambda index: len(chunks[index]) + len(chunks[index + 1]),
+        )
+        chunks[pair_index:pair_index + 2] = [chunks[pair_index] + chunks[pair_index + 1]]
+    return chunks
+
+
+def align_subtitle_segments(
+    text: str,
+    start: float,
+    speech_end: float,
+    silence_regions: list[dict[str, float]],
+    *,
+    max_chunks: int = 3,
+    search_seconds: float = 0.75,
+    min_gap_seconds: float = 0.25,
+) -> list[dict[str, float | str]]:
+    """Align subtitle phrase changes to pauses measured in the final published WAV.
+
+    Text is never used to drive the audio. Character weights only estimate each
+    phrase boundary; a nearby low-energy pause in the final WAV is preferred.
+    """
+    chunks = split_subtitle_text(text, max_chunks=max_chunks)
+    start = float(start)
+    speech_end = float(speech_end)
+    if not chunks or speech_end <= start:
+        return []
+    if len(chunks) == 1:
+        return [{"start": round(start, 4), "end": round(speech_end, 4), "text": chunks[0]}]
+
+    weights = [max(1, sum(1 for char in chunk if not char.isspace())) for chunk in chunks]
+    total_weight = sum(weights)
+    targets = []
+    cumulative = 0
+    for weight in weights[:-1]:
+        cumulative += weight
+        targets.append(start + (speech_end - start) * cumulative / total_weight)
+
+    candidates = []
+    for index, region in enumerate(silence_regions):
+        region_start = float(region["start"])
+        region_end = float(region["end"])
+        if region_end <= start or region_start >= speech_end:
+            continue
+        switch = max(region_start, min(region_start + 0.08, region_end - 0.02))
+        if start + min_gap_seconds <= switch <= speech_end - min_gap_seconds:
+            candidates.append((index, switch))
+
+    boundaries = []
+    used = set()
+    previous = start
+    for boundary_index, target in enumerate(targets):
+        remaining = len(targets) - boundary_index - 1
+        minimum = previous + min_gap_seconds
+        maximum = speech_end - min_gap_seconds * (remaining + 1)
+        eligible = [
+            item for item in candidates
+            if item[0] not in used
+            and minimum <= item[1] <= maximum
+            and abs(item[1] - target) <= search_seconds
+        ]
+        if eligible:
+            region_index, chosen = min(eligible, key=lambda item: abs(item[1] - target))
+            used.add(region_index)
+        else:
+            chosen = min(max(target, minimum), maximum)
+        chosen = round(chosen, 4)
+        boundaries.append(chosen)
+        previous = chosen
+
+    points = [round(start, 4), *boundaries, round(speech_end, 4)]
+    return [
+        {"start": points[index], "end": points[index + 1], "text": chunk}
+        for index, chunk in enumerate(chunks)
+        if points[index + 1] > points[index]
+    ]
 
 def proportional_boundary_targets(probe_durations: list[float], narration_duration: float) -> list[float]:
     """Estimate cue boundaries before snapping them to measured final-WAV pauses."""
