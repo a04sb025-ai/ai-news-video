@@ -12,7 +12,7 @@ from pathlib import Path
 SILENCE_THRESHOLD_DBFS = -35.0
 SILENCE_WINDOW_SECONDS = 0.01
 SILENCE_MIN_SECONDS = 0.08
-BOUNDARY_SEARCH_SECONDS = 1.25
+BOUNDARY_SEARCH_SECONDS = 2.50
 SCENE_SWITCH_DELAY_SECONDS = 0.12
 MIN_BOUNDARY_GAP_SECONDS = 0.20
 TERMINAL_PUNCTUATION = ("。", "！", "？", "!", "?")
@@ -122,7 +122,7 @@ def align_subtitle_segments(
     silence_regions: list[dict[str, float]],
     *,
     max_chunks: int = 3,
-    search_seconds: float = 0.75,
+    search_seconds: float = 1.25,
     min_gap_seconds: float = 0.25,
 ) -> list[dict[str, float | str]]:
     """Align subtitle phrase changes to pauses measured in the final published WAV.
@@ -156,7 +156,11 @@ def align_subtitle_segments(
         if start + min_gap_seconds <= switch <= speech_end - min_gap_seconds:
             candidates.append((index, switch))
 
-    boundaries = []
+    # A subtitle must never advance while the narrator is still speaking.
+    # If no real pause exists near an estimated text boundary, keep the current
+    # subtitle visible and merge the next chunk into it instead of inventing a
+    # proportional timestamp inside active speech.
+    selected = []
     used = set()
     previous = start
     for boundary_index, target in enumerate(targets):
@@ -169,21 +173,28 @@ def align_subtitle_segments(
             and minimum <= item[1] <= maximum
             and abs(item[1] - target) <= search_seconds
         ]
-        if eligible:
-            region_index, chosen = min(eligible, key=lambda item: abs(item[1] - target))
-            used.add(region_index)
-        else:
-            chosen = min(max(target, minimum), maximum)
+        if not eligible:
+            continue
+        region_index, chosen = min(eligible, key=lambda item: abs(item[1] - target))
+        used.add(region_index)
         chosen = round(chosen, 4)
-        boundaries.append(chosen)
+        selected.append((boundary_index, chosen))
         previous = chosen
 
-    points = [round(start, 4), *boundaries, round(speech_end, 4)]
-    return [
-        {"start": points[index], "end": points[index + 1], "text": chunk}
-        for index, chunk in enumerate(chunks)
-        if points[index + 1] > points[index]
-    ]
+    segments = []
+    segment_start = round(start, 4)
+    chunk_start = 0
+    for boundary_index, boundary in selected:
+        text_value = "".join(chunks[chunk_start:boundary_index + 1])
+        if boundary > segment_start and text_value:
+            segments.append({"start": segment_start, "end": boundary, "text": text_value})
+        segment_start = boundary
+        chunk_start = boundary_index + 1
+
+    tail_text = "".join(chunks[chunk_start:])
+    if speech_end > segment_start and tail_text:
+        segments.append({"start": segment_start, "end": round(speech_end, 4), "text": tail_text})
+    return segments
 
 def proportional_boundary_targets(probe_durations: list[float], narration_duration: float) -> list[float]:
     """Estimate cue boundaries before snapping them to measured final-WAV pauses."""
@@ -222,9 +233,10 @@ def snap_scene_boundaries(
 ) -> tuple[list[float], list[dict[str, float | str | None]]]:
     """Snap proportional cue estimates to nearby real pauses in the final narration.
 
-    Each selected boundary is constrained to remain ordered. If no suitable pause
-    exists near a target, the proportional estimate is retained rather than making
-    a risky jump to an unrelated silence inside another sentence.
+    Each selected boundary is constrained to remain ordered. The renderer uses a
+    wider search window because a continuous natural TTS pass can speak a cue more
+    slowly or quickly than the local probe. Publication code rejects any remaining
+    proportional fallback, so visuals never intentionally switch mid-speech.
     """
     targets = proportional_boundary_targets(probe_durations, narration_duration)
     if not targets:

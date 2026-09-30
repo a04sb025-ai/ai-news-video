@@ -94,6 +94,30 @@ class AudioTimingTest(unittest.TestCase):
         self.assertEqual("".join(segment["text"] for segment in segments), "最初の説明です。次の説明です。最後です。")
 
 
+    def test_subtitle_does_not_switch_mid_speech_when_pause_is_missing(self):
+        segments = align_subtitle_segments(
+            "最初の説明です。次の説明です。最後です。",
+            0.0,
+            6.0,
+            [{"start": 3.8, "end": 4.1, "duration": 0.3}],
+            search_seconds=0.5,
+        )
+        self.assertEqual(len(segments), 1)
+        self.assertEqual(segments[0]["text"], "最初の説明です。次の説明です。最後です。")
+        self.assertEqual(segments[0]["start"], 0.0)
+        self.assertEqual(segments[0]["end"], 6.0)
+
+    def test_scene_boundary_accepts_later_real_pause_in_wider_audio_led_window(self):
+        probes = [2.0, 2.0]
+        boundaries, details = snap_scene_boundaries(
+            probes,
+            8.0,
+            [{"start": 5.5, "end": 5.9, "duration": 0.4}],
+        )
+        self.assertEqual(details[0]["method"], "silence-snapped")
+        self.assertAlmostEqual(boundaries[0], 5.62, delta=0.02)
+
+
     def test_far_silence_is_not_used_for_wrong_scene(self):
         probes = [1.0, 1.0, 1.0]
         boundaries, details = snap_scene_boundaries(

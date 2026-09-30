@@ -92,6 +92,21 @@ class NarrationTtsTest(unittest.TestCase):
             openai.assert_called_once()
             open_jtalk.assert_not_called()
 
+    def test_open_jtalk_flattens_paragraph_breaks_instead_of_truncating(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "speech.wav"
+            with mock.patch.object(module.subprocess, "run") as run, \
+                 mock.patch.object(module, "wav_duration", return_value=1.0):
+                module.synthesize_open_jtalk(
+                    "最初の文。\n\n次の文。",
+                    output,
+                    dictionary=Path("dic"),
+                    voice=Path("voice.htsvoice"),
+                    rate=1.10,
+                )
+            self.assertEqual(output.with_suffix(".txt").read_text(), "最初の文。 次の文。\n")
+            run.assert_called_once()
+
     def test_offline_ci_uses_open_jtalk_when_no_api_key_exists(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "speech.wav"
