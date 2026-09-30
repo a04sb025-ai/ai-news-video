@@ -260,7 +260,10 @@ with tempfile.TemporaryDirectory() as directory:
     narration = tmp / "narration.txt"
     narration_wav = tmp / "voice-single-pass.wav"
     narration_chunks = [ensure_terminal_pause(cue["narration"]) for cue in story["script"]]
-    narration_text = " ".join(narration_chunks)
+    # Keep one natural TTS pass, but make authored scene boundaries explicit as
+    # paragraph breaks. This gives the final WAV a measurable pause at every cue
+    # boundary without stitching separately synthesized clips together.
+    narration_text = "\n\n".join(narration_chunks)
     narration.write_text(narration_text + "\n")
     tts_metadata = synthesize_published_narration(
         narration_text,
@@ -300,6 +303,14 @@ with tempfile.TemporaryDirectory() as directory:
         narration_duration,
         silence_regions,
     )
+    unresolved_boundaries = [
+        item for item in boundary_alignment if item["method"] == "proportional-fallback"
+    ]
+    if unresolved_boundaries:
+        raise SystemExit(
+            "Final narration has scene boundaries without a measurable pause: "
+            + json.dumps(unresolved_boundaries, ensure_ascii=False)
+        )
     timeline = [0.0, *scene_boundaries, narration_duration + FINAL_END_PAUSE_SECONDS]
     cue_durations = []
     page_count = max(0, len(story["script"]) - 1)
@@ -458,7 +469,7 @@ manifest = {
     "content_hash": story.get("content_hash"),
     "page_count": len(story.get("script", [])) - 1,
     "duration_seconds": DURATION,
-    "audio_pipeline": "single-pass-natural-tts-audio-led-v4",
+    "audio_pipeline": "single-pass-natural-tts-audio-led-v5",
     "audio_tts_provider": tts_metadata["provider"],
     "audio_tts_model": tts_metadata["model"],
     "audio_tts_voice": tts_metadata["voice"],
@@ -480,7 +491,7 @@ manifest = {
     "audio_scene_durations": cue_durations,
     "audio_final_end_pause_seconds": FINAL_END_PAUSE_SECONDS,
     "audio_output_sample_rate_hz": 48000,
-    "subtitle_timing_source": "final-wav-pause-assisted-v1",
+    "subtitle_timing_source": "final-wav-real-pause-only-v2",
     "subtitle_segment_count": sum(len(cue.get("subtitleSegments", [])) for cue in page_cues),
     "static_image_input_fps": FPS,
     "audio_tempo_adjustment": False,
