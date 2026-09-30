@@ -12,7 +12,7 @@ SPEC.loader.exec_module(MODULE)
 
 
 class AdaptiveRenderPerformanceTest(unittest.TestCase):
-    def test_looped_stills_are_not_decoded_at_output_frame_rate(self):
+    def test_looped_stills_stay_at_output_frame_rate_for_framesync_stability(self):
         command = [
             "ffmpeg",
             "-f", "lavfi", "-i", "color=s=1080x1920:r=30:d=53",
@@ -23,8 +23,9 @@ class AdaptiveRenderPerformanceTest(unittest.TestCase):
         ]
         optimized, metadata = MODULE.optimize_ffmpeg_command(command)
 
-        self.assertEqual(metadata["still_inputs_retimed"], 2)
-        self.assertEqual(optimized.count("1"), command.count("1") + 2)
+        self.assertEqual(metadata["still_inputs_retimed"], 0)
+        self.assertEqual(metadata["still_inputs_preserved_30fps"], 2)
+        self.assertEqual(optimized.count("30"), command.count("30"))
         self.assertNotIn("medium", optimized)
         self.assertIn("veryfast", optimized)
         self.assertIn("-crf", optimized)
@@ -38,6 +39,7 @@ class AdaptiveRenderPerformanceTest(unittest.TestCase):
 
         self.assertEqual(optimized, command)
         self.assertEqual(metadata["still_inputs_retimed"], 0)
+        self.assertEqual(metadata["still_inputs_preserved_30fps"], 0)
         self.assertFalse(metadata["x264_preset_changed"])
 
 
