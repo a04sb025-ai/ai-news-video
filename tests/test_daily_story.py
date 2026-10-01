@@ -56,6 +56,28 @@ class DailyStoryTest(unittest.TestCase):
   for mutate in (lambda p:p.pop("source_url"),lambda p:p.update(source_url="http://openai.com/x"),lambda p:p.pop("headline"),lambda p:p.update(points=["one"]),lambda p:p.update(request_id="../../bad")):
    payload=valid(); mutate(payload)
    with self.assertRaises(ValueError): daily.validate(payload)
+ def test_opening_caption_keeps_the_news_action_and_author_break(self):
+  for headline in ("Manusが5億ドル調達", "Crusoeが39億ドル投資", "Geminiが3社と提携"):
+   wrapped=daily.opening_caption(headline)
+   self.assertEqual(wrapped.replace("\n",""),headline)
+   self.assertLessEqual(len(wrapped.splitlines()),2)
+   self.assertTrue(all(len(line)<=9 for line in wrapped.splitlines()))
+  self.assertEqual(daily.opening_caption("Manusが\n5億ドル調達"),"Manusが\n5億ドル調達")
+  # An extended Latin brand should not be cut just to satisfy a character count.
+  self.assertEqual(daily.opening_caption("LongEnglishBrand"),"LongEnglishBrand")
+ def test_rich_story_uses_first_pass_opening_layout(self):
+  payload=valid()
+  if "pages" not in payload:
+   payload["pages"] = [
+    {"page_role": role, "headline": text, "support_text":"事実を説明", "narration":"確認した事実を説明します。",
+     "subtitle":"確認した事実を説明します。", "visual_intent":"ニュースの当事者と対象", "key_visuals":["当事者","対象"],
+     "mozo_line":"ここに注目", "mozo_usage":"ニュースを指す"}
+    for role, text in zip(("hook","fact","issue","conclusion"),("Manusが\n5億ドル調達","確認した事実","ここが争点","現時点の整理"))
+   ]
+  story=daily.build_story(daily.validate(payload))
+  first=story["script"][0]["caption"]
+  self.assertIn("\n",first)
+  self.assertEqual(first.replace("\n",""),payload["pages"][0]["headline"].replace("\n",""))
  def test_caption_under_limit_unchanged(self): self.assertEqual(daily.caption("短い完全な見出し"), "短い完全な見出し")
  def test_caption_safely_wraps_without_rewriting(self):
   text="ChatGPT、13〜17歳向けに新しい体験を提供"

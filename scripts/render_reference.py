@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import unicodedata
 import wave
 from pathlib import Path
 
@@ -174,9 +175,22 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 events.append(vector(start, end, rect_path(0, 1540, WIDTH, 195), "25304A", layer=1))
             events.append(dialogue(start, end, "Eyebrow", cue.get("label", "AI NEWS"), layer=3))
             panel_alpha = "&H08&" if SAFE_OPENING else "&H28&"
-            events.append(vector(start, end, rect_path(42, 150, 996, 510), "101528", rf"\alpha{panel_alpha}", 2))
-            events.append(vector(start, end, rect_path(70, 195, 16, 350), "00A5FF", layer=3))
-            events.append(dialogue(start, end, "Headline", cue["caption"], r"\an7\pos(112,235)", 4))
+            # Instagram's square grid preview crops the top and bottom of a Reel.
+            # Place the self-contained headline inside the shared central area.
+            panel_y = 420 if IS_DAILY else 150
+            panel_height = 360 if IS_DAILY else 510
+            headline_y = 485 if IS_DAILY else 235
+            events.append(vector(start, end, rect_path(42, panel_y, 996, panel_height), "101528", rf"\alpha{panel_alpha}", 2))
+            events.append(vector(start, end, rect_path(70, panel_y + 45, 16, 265 if IS_DAILY else 350), "00A5FF", layer=3))
+            rows = cue["caption"].splitlines()
+            maximum_glyph_width = max(
+                (sum(1.0 if unicodedata.east_asian_width(char) in ("F", "W") else 0.6 for char in row)
+                 for row in rows), default=1.0,
+            )
+            # Fit the complete authored headline, not a truncated prefix.
+            headline_font = min(112, max(56, int(850 / maximum_glyph_width))) if IS_DAILY else 112
+            events.append(dialogue(start, end, "Headline", cue["caption"],
+                                   rf"\an7\pos(112,{headline_y})\fs{headline_font}", 4))
 
             template = story.get("visual_template", {"key": "announcement", "bubble": "何が変わる？"})
             events.append(vector(start, end, rect_path(82, 700, 916, 570), "EDEAF7", r"\alpha&H08&", 3))

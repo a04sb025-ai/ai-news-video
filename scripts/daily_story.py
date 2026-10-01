@@ -144,6 +144,41 @@ def caption(text, limit=18):
     return left + "\n" + right
 
 
+def opening_caption(text):
+    """Lay out the complete opening claim before rendering; never drop its predicate.
+
+    Keep editorial line breaks when supplied. For old one-line inputs, wrap at a
+    meaningful boundary without cutting a Latin brand or a number from its unit.
+    """
+    if not isinstance(text, str):
+        raise ValueError("opening headline must be a string")
+    rows = [row.strip() for row in text.splitlines()]
+    whole = caption("".join(rows) if len(rows) > 1 else text, limit=18)
+    if len(rows) == 2 and all(rows) and all(len(row) <= 9 for row in rows):
+        return "\n".join(rows)
+    if len(whole) <= 9:
+        return whole
+    candidates = []
+    for cut in range(1, len(whole)):
+        left, right = whole[:cut], whole[cut:]
+        if max(len(left), len(right)) > 9:
+            continue
+        if left[-1].isascii() and right[0].isascii() and left[-1].isalnum() and right[0].isalnum():
+            continue
+        if left[-1].isdigit() and right[0] in "億万兆円社人件回倍年":
+            continue
+        particle_break = left.endswith(("が", "は", "を", "で", "と", "へ"))
+        meaningful_break = left[-1] in BREAK_AFTER or left[-1].isspace()
+        priority = 0 if meaningful_break else (1 if particle_break else 2)
+        candidates.append((priority, abs(len(left) - len(right)), cut))
+    if not candidates:
+        # Long Latin product names are preferable to a broken proper noun.
+        # The renderer fits the entire text to the available pixel width.
+        return whole
+    cut = min(candidates)[2]
+    return whole[:cut] + "\n" + whole[cut:]
+
+
 def wrap_subtitle(text, limit=22, max_lines=3):
     """Insert readability line breaks without removing any narration text."""
     text = " ".join(text.split())
@@ -223,7 +258,7 @@ def build_rich_story(payload):
             "end": end,
             "label": labels[i],
             "page_role": page["page_role"],
-            "caption": caption(page["headline"]),
+            "caption": opening_caption(page["headline"]) if i == 0 else caption(page["headline"]),
             "support_text": page["support_text"],
             "source_narration": page["narration"],
             "narration": narration,
