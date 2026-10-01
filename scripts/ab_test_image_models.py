@@ -19,14 +19,22 @@ MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 REQUEST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 
 COMMON = (
-    "Original vertical editorial key visual for the AI Tool Watch series, grounded only in the verified news context. "
-    "Deep navy and black field, restrained amber, violet and lavender accents, subtle paper grain, soft light, and sparse thin geometry as quiet background texture. "
-    "Communicate the news at a glance with one dominant, phone-readable subject or concrete relationship; it must work as the first-three-seconds hook and a thumbnail. "
-    "Reserve the entire top 38 percent as calm, low-detail negative space for typography added later; put the important subject between 42 and 82 percent. "
-    "Keep the lower-left quiet for the canonical mascot overlay, but do not draw Mozo or any substitute mascot. "
-    "No collage, generic AI icon pile, robot, humanoid mascot, glowing brain, cyberpunk cliché, screenshot, logo, words, letters, numbers, watermark, or readable UI. "
-    "Do not invent facts, brands, people, outcomes, danger, or performance not present in the verified context. "
+    "Create a finished vertical social-news thumbnail image for AIツールウォッチ. "
+    "This is a direct quality comparison against a ChatGPT-generated reference image. "
+    "The image itself must contain the final Japanese typography; do not leave text placeholders. "
+    "Render these Japanese labels clearly and accurately: top-left small label 『今朝のAIニュース』; "
+    "top-right small brand 『AIツールウォッチ』; the supplied Headline as very large bold Japanese text; "
+    "and a short subheadline 『何が起きた？』. "
+    "Premium Japanese tech-news poster designed to stop a mobile scroll. "
+    "Dark navy to black background with controlled cyan/electric-blue highlights. "
+    "Use one strong red accent only when it semantically emphasizes stopping or interruption. "
+    "Use one compelling editorial AI/server/network scene with clear foreground, midground, and background depth, "
+    "crisp cinematic lighting, high contrast, and sophisticated rather than sensational styling. "
+    "No real person's face is required. Do not invent executives, unsupported events, logos, or product details. "
+    "Avoid generic AI icon collages, robot mascots, glowing brains, stock illustration look, clutter, tiny text, "
+    "fake dashboards, unreadable microcopy, or text cut off at the edges. Keep generous safe margins. "
 )
+
 
 
 def utc_now():
