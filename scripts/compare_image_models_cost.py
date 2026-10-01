@@ -15,7 +15,7 @@ import ab_test_image_models as base
 ROOT = Path(__file__).resolve().parents[1]
 PRICES_PER_MILLION = {
     "gpt-image-2": {"text_input": 5.0, "image_input": 8.0, "image_output": 30.0},
-    "gpt-image-2.5-flare": {"text_input": 5.0, "image_input": 8.0, "image_output": 30.0},
+    "gpt-image-2.5-flare": {"text_input": 5.0, "image_input": 8.0, "image_output": 30.0},\n    "gpt-image-2.5-sunburst": {"text_input": 5.0, "image_input": 8.0, "image_output": 30.0},
 }
 
 
