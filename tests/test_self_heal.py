@@ -104,6 +104,38 @@ class SelfHealPolicyTest(unittest.TestCase):
         }
         self.assertFalse(self_heal_adaptive.publish_only_retryable(result, [], False))
 
+    def test_image_log_accepts_dedicated_opening_as_additive_asset(self):
+        expected = ["scene-1.png", "scene-2.png", "scene-3.png", "scene-4.png"]
+        story = {"opening": {"finished_thumbnail_asset": "opening-thumbnail.png"}}
+        log = {
+            "status": "complete",
+            "content_hash": "digest",
+            "expected_images": ["opening-thumbnail.png", *expected],
+            "images": [{"file": name} for name in ["opening-thumbnail.png", *expected]],
+        }
+        self.assertTrue(
+            automation_result.image_generation_log_matches_story(story, expected, log, "digest")
+        )
+
+    def test_image_log_accepts_opening_only_fallback_but_keeps_all_body_scenes_required(self):
+        expected = ["scene-1.png", "scene-2.png", "scene-3.png", "scene-4.png"]
+        story = {"opening": {"finished_thumbnail_asset": "opening-thumbnail.png"}}
+        log = {
+            "status": "complete-with-opening-fallback",
+            "content_hash": "digest",
+            "expected_images": ["opening-thumbnail.png", *expected],
+            "images": [{"file": name} for name in expected],
+        }
+        self.assertTrue(
+            automation_result.image_generation_log_matches_story(story, expected, log, "digest")
+        )
+
+        missing_scene = dict(log)
+        missing_scene["images"] = [{"file": name} for name in expected[:-1]]
+        self.assertFalse(
+            automation_result.image_generation_log_matches_story(story, expected, missing_scene, "digest")
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
