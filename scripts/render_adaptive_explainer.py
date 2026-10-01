@@ -33,6 +33,13 @@ ROOT = Path(__file__).resolve().parents[1]
 ASSET_DIR = ROOT / story["image_asset_dir"]
 STORY_IMAGES = [ASSET_DIR / name for name in story.get("image_assets", [])]
 USE_STORY_IMAGES = bool(STORY_IMAGES) and all(path.is_file() and path.stat().st_size > 0 for path in STORY_IMAGES)
+FINISHED_OPENING_ASSET_NAME = str(story.get("opening", {}).get("finished_thumbnail_asset") or "")
+FINISHED_OPENING_ASSET = ASSET_DIR / FINISHED_OPENING_ASSET_NAME if FINISHED_OPENING_ASSET_NAME else None
+USE_FINISHED_OPENING = bool(
+    FINISHED_OPENING_ASSET
+    and FINISHED_OPENING_ASSET.is_file()
+    and FINISHED_OPENING_ASSET.stat().st_size > 0
+)
 MOZO_OPENING_ASSET = ROOT / story["opening"]["character_asset"]
 USE_MOZO_OPENING_ASSET = (
     MOZO_OPENING_ASSET.is_file()
@@ -43,7 +50,7 @@ OPENING_STYLE = story.get("opening", {}).get("thumbnail_style", "B")
 if OPENING_STYLE not in {"A", "B", "C"}:
     raise SystemExit("opening.thumbnail_style must be A, B or C")
 OPENING_END = min(3.0, float(story["script"][0]["end"]))
-OPENING_LAYOUT_CONTRACT = "split-text-visual-v1"
+OPENING_LAYOUT_CONTRACT = "generated-complete-poster-v1" if USE_FINISHED_OPENING else "split-text-visual-v1"
 BODY_LAYOUT_CONTRACT = "youtube-shorts-ui-safe-v2"
 THUMBNAIL_RENDER_SECONDS = min(0.5, max(0.1, OPENING_END / 2))
 
@@ -153,7 +160,9 @@ def add_opening_body_page(events, cue, start, end):
 
 
 def add_opening(events, cue):
-    """Place typography in the generated image's reserved negative space without masking the artwork."""
+    """Use renderer typography only when the dedicated finished poster is unavailable."""
+    if USE_FINISHED_OPENING:
+        return
     start, end = 0.0, OPENING_END
     if OPENING_STYLE == "A":
         events.append(vector(start, end, rect_path(62, 190, 18, 455), "00A5FF", layer=4))
@@ -175,11 +184,29 @@ def add_opening(events, cue):
 
 
 def render_opening_thumbnail(ass, destination):
-    """Compose the canonical thumbnail directly from source artwork and opening typography.
+    """Render the canonical thumbnail directly from the dedicated finished poster when available.
 
-    This deliberately does not sample the finished MP4, so video startup frames, fades,
-    codec timing, or player behavior cannot change the YouTube thumbnail.
+    The finished poster already contains its typography and branding, so the renderer must not
+    add Mozo, captions, progress bars, or ASS overlays to that thumbnail. Legacy composition
+    remains as a fallback when dedicated generation is unavailable.
     """
+    if USE_FINISHED_OPENING:
+        subprocess.run([
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            "-i", str(FINISHED_OPENING_ASSET),
+            "-vf", f"scale={WIDTH}:{HEIGHT},setsar=1",
+            "-frames:v", "1",
+            "-q:v", "2",
+            str(destination),
+        ], check=True)
+        if not destination.is_file() or destination.stat().st_size <= 0:
+            raise SystemExit("Finished opening thumbnail render did not produce an image")
+        subprocess.run([
+            "ffmpeg", "-hide_banner", "-v", "error", "-xerror", "-i", str(destination),
+            "-f", "null", "-",
+        ], check=True)
+        return
+
     command = [
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
         "-f", "lavfi", "-i", f"color=c=0x18213A:s={WIDTH}x{HEIGHT}:r={FPS}:d=1",
@@ -392,9 +419,11 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     page_cues = story["script"][:-1]
     for index, cue in enumerate(story["script"]):
         start, end = float(cue["start"]), float(cue["end"])
-        events.append(vector(start, end, rect_path(72, 1760, 936, 8), "4A526A", layer=1))
-        progress = round(936 * end / DURATION)
-        events.append(vector(start, end, rect_path(72, 1760, progress, 8), "58D6FF", layer=2))
+        chrome_start = OPENING_END if index == 0 and USE_FINISHED_OPENING else start
+        if end > chrome_start:
+            events.append(vector(chrome_start, end, rect_path(72, 1760, 936, 8), "4A526A", layer=1))
+            progress = round(936 * end / DURATION)
+            events.append(vector(chrome_start, end, rect_path(72, 1760, progress, 8), "58D6FF", layer=2))
 
         if index == 0:
             add_opening(events, cue)
@@ -427,6 +456,11 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             image_indices.append(input_index)
             command.extend(["-loop", "1", "-framerate", str(FPS), "-i", str(image)])
             input_index += 1
+    finished_opening_index = None
+    if USE_FINISHED_OPENING:
+        finished_opening_index = input_index
+        command.extend(["-loop", "1", "-framerate", str(FPS), "-i", str(FINISHED_OPENING_ASSET)])
+        input_index += 1
 
     filters = []
     current = "[0:v]"
@@ -443,6 +477,10 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         filters.append(f"[{mozo_index}:v]scale=190:-1[mozo];")
         filters.append(f"{current}[mozo]overlay=72:1480:enable='between(t,0,{page_cues[0]['end']})'[withmozo];")
         current = "[withmozo]"
+    if finished_opening_index is not None:
+        filters.append(f"[{finished_opening_index}:v]scale={WIDTH}:{HEIGHT},setsar=1[finishedopening];")
+        filters.append(f"{current}[finishedopening]overlay=enable='between(t,0,{OPENING_END})'[withfinishedopening];")
+        current = "[withfinishedopening]"
     filters.append(f"{current}subtitles={ass}[video]")
 
     command.extend(["-filter_complex", "".join(filters), "-map", "[video]", "-map", "1:a"])
@@ -503,7 +541,7 @@ manifest = {
     "full_narration_subtitles": True,
     "subtitle_font_size_px": 48,
     "opening_subtitle_font_size_px": 46,
-    "opening_headline_font_size_px": {"A": 108, "B": 106, "C": 120}[OPENING_STYLE],
+    "opening_headline_font_size_px": None if USE_FINISHED_OPENING else {"A": 108, "B": 106, "C": 120}[OPENING_STYLE],
     "opening_headline_target_chars_per_line": 9,
     "opening_thumbnail_style": OPENING_STYLE,
     "opening_support_copy_visible": False,
@@ -511,12 +549,14 @@ manifest = {
     "opening_single_dominant_visual": True,
     "opening_thumbnail_window_seconds": OPENING_END,
     "opening_layout_contract": OPENING_LAYOUT_CONTRACT,
-    "opening_text_safe_area_ratio": {"top": 0.08, "bottom": 0.40},
-    "opening_dominant_visual_area_ratio": {"top": 0.42, "bottom": 0.82},
+    "opening_text_safe_area_ratio": None if USE_FINISHED_OPENING else {"top": 0.08, "bottom": 0.40},
+    "opening_dominant_visual_area_ratio": None if USE_FINISHED_OPENING else {"top": 0.42, "bottom": 0.82},
     "opening_large_overlay_panel": False,
     "opening_generated_image_full_frame": True,
     "opening_thumbnail_file": str(thumbnail_output),
-    "opening_thumbnail_source": "renderer-composed-opening-v1",
+    "opening_thumbnail_source": "generated-complete-poster-v1" if USE_FINISHED_OPENING else "renderer-composed-opening-v1",
+    "opening_finished_thumbnail": USE_FINISHED_OPENING,
+    "opening_finished_thumbnail_asset": str(FINISHED_OPENING_ASSET) if USE_FINISHED_OPENING else None,
     "opening_thumbnail_direct_render": True,
     "opening_thumbnail_width": WIDTH,
     "opening_thumbnail_height": HEIGHT,
@@ -532,6 +572,7 @@ manifest = {
     "body_generated_image_full_frame": True,
     "used_generated_images": USE_STORY_IMAGES,
     "used_mozo_opening_asset": USE_MOZO_OPENING_ASSET,
+    "mozo_hidden_during_finished_opening": bool(USE_FINISHED_OPENING and USE_MOZO_OPENING_ASSET),
     "mozo_opening_asset": str(MOZO_OPENING_ASSET) if USE_MOZO_OPENING_ASSET else None,
     "mozo_opening_asset_sha256": hashlib.sha256(MOZO_OPENING_ASSET.read_bytes()).hexdigest() if USE_MOZO_OPENING_ASSET else None,
     "image_directory": str(ASSET_DIR),
