@@ -1,0 +1,151 @@
+name: One-off ChatGPT quality image comparison
+
+"on":
+  push:
+    branches:
+      - experiment/chatgpt-quality-image-compare-20261001
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Generate identical finished thumbnails with three API models
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          import time
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError
+
+          out = Path("artifacts/chatgpt-quality-image-compare-20261001")
+          out.mkdir(parents=True, exist_ok=True)
+
+          prompt = """Create a finished vertical social-news thumbnail image for AIツールウォッチ.
+This is a direct quality comparison against a ChatGPT-generated reference image.
+The image itself must contain the final Japanese typography; do not leave text placeholders.
+
+Topic: OpenAI pauses training of frontier AI.
+
+Required Japanese text, rendered clearly and accurately:
+- Small label at top left: 「今朝のAIニュース」
+- Small brand at top right: 「AIツールウォッチ」
+- Main headline, very large and bold: 「OpenAI、最先端AIの学習を一時停止」
+- Short subheadline: 「何が起きた？」
+
+Art direction:
+- Premium Japanese tech-news poster, designed to stop a mobile scroll.
+- Dark navy to black background with controlled cyan/electric-blue highlights.
+- Use one strong red accent to emphasize the idea of 「一時停止」.
+- Show a visually compelling, editorial-style AI/server/network scene suggesting halted training or interrupted data flow.
+- Strong foreground/midground/background depth, crisp cinematic lighting, high contrast, sophisticated rather than sensational.
+- No real person's face is required. Do not invent specific executives or unsupported events.
+- Avoid generic AI icon collages, robot mascots, glowing brains, stock illustration look, clutter, tiny text, fake dashboards, or unreadable microcopy.
+- Keep generous safe margins. Nothing important may be cut off.
+- The whole image should feel like the opening 3 seconds of a premium vertical news video and work as a standalone thumbnail.
+"""
+
+          models = [
+              "gpt-image-2",
+              "gpt-image-2.5-flare",
+              "gpt-image-2.5-sunburst",
+          ]
+          size = "1024x1536"
+          quality = "medium"
+          manifest = {
+              "test": "chatgpt-quality-image-compare-20261001",
+              "size": size,
+              "quality": quality,
+              "prompt": prompt,
+              "results": [],
+          }
+          key = os.environ.get("OPENAI_API_KEY", "")
+          if not key:
+              raise SystemExit("OPENAI_API_KEY is not configured")
+
+          for model in models:
+              started = time.monotonic()
+              payload = json.dumps({
+                  "model": model,
+                  "prompt": prompt,
+                  "size": size,
+                  "quality": quality,
+                  "n": 1,
+                  "output_format": "png",
+              }).encode()
+              request = Request(
+                  "https://api.openai.com/v1/images/generations",
+                  data=payload,
+                  headers={
+                      "Authorization": f"Bearer {key}",
+                      "Content-Type": "application/json",
+                  },
+                  method="POST",
+              )
+              item = {"model": model}
+              try:
+                  with urlopen(request, timeout=300) as response:
+                      result = json.load(response)
+                  encoded = result["data"][0].get("b64_json")
+                  if not encoded:
+                      raise RuntimeError("image response had no b64_json")
+                  path = out / f"{model}.png"
+                  path.write_bytes(base64.b64decode(encoded, validate=True))
+                  item.update({
+                      "success": True,
+                      "file": path.name,
+                      "elapsed_seconds": round(time.monotonic() - started, 3),
+                      "usage": result.get("usage"),
+                  })
+                  print(f"generated {path} in {item['elapsed_seconds']}s", flush=True)
+              except HTTPError as error:
+                  try:
+                      detail = error.read().decode("utf-8", errors="replace")
+                  except Exception:
+                      detail = ""
+                  item.update({
+                      "success": False,
+                      "status": getattr(error, "code", None),
+                      "error": detail[:1000],
+                      "elapsed_seconds": round(time.monotonic() - started, 3),
+                  })
+                  print(f"{model} failed HTTP {item.get('status')}: {item.get('error')}", flush=True)
+              except Exception as error:
+                  item.update({
+                      "success": False,
+                      "error": f"{type(error).__name__}: {error}",
+                      "elapsed_seconds": round(time.monotonic() - started, 3),
+                  })
+                  print(f"{model} failed: {item['error']}", flush=True)
+              manifest["results"].append(item)
+
+          (out / "manifest.json").write_text(
+              json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          failures = [item["model"] for item in manifest["results"] if not item.get("success")]
+          if failures:
+              raise SystemExit("failed models: " + ", ".join(failures))
+          PY
+
+      - name: Upload comparison images
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chatgpt-quality-image-compare-20261001
+          retention-days: 30
+          if-no-files-found: error
+          path: artifacts/chatgpt-quality-image-compare-20261001/**
