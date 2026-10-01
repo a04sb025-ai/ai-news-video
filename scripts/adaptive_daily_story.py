@@ -335,6 +335,8 @@ def build_story(payload):
             "headline_source": "verified_headline",
             "headline_max_lines": 2,
             "headline_chars_per_line_target": 9,
+            "finished_thumbnail_mode": "generated-complete-poster-v1",
+            "finished_thumbnail_asset": "opening-thumbnail.png",
         },
         "image_asset_dir": f"assets/generated/{payload['request_id']}/{digest}/daily-editorial-v1",
         "image_assets": image_assets,
