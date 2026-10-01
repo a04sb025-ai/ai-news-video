@@ -42,6 +42,37 @@ def image_manifest_shape_valid(story, expected):
     return len(expected) == 4
 
 
+def image_generation_log_matches_story(story, expected, log, digest):
+    """Accept the dedicated opening poster as an additive asset, never as a body-scene substitute."""
+    if log.get("content_hash") != digest:
+        return False
+
+    required = list(expected)
+    recorded = [entry.get("file") for entry in log.get("images", []) if isinstance(entry, dict)]
+    logged_expected = log.get("expected_images")
+    status = log.get("status")
+
+    # Legacy/config-disabled generation logs contain only the required body scenes.
+    if status == "complete" and logged_expected == required and recorded == required:
+        return True
+
+    opening_asset = str(story.get("opening", {}).get("finished_thumbnail_asset") or "")
+    if not opening_asset:
+        return False
+
+    expected_with_opening = [opening_asset, *required]
+    if logged_expected != expected_with_opening:
+        return False
+
+    # A successfully generated finished opening is recorded before the body scenes.
+    if status == "complete" and recorded == expected_with_opening:
+        return True
+
+    # Opening-only failure is an intentional bounded fallback. Every required body
+    # scene must still be present and recorded before publication can continue.
+    return status == "complete-with-opening-fallback" and recorded == required
+
+
 def generated_images_ready(story, video):
     expected = story.get("image_assets", [])
     image_dir = canonical_path(story.get("image_asset_dir", ""))
@@ -52,9 +83,7 @@ def generated_images_ready(story, video):
         (image_dir / name).is_file() and (image_dir / name).stat().st_size > 0 for name in expected
     )
     log = read_json(image_dir / "image-generation-log.json")
-    recorded = [entry.get("file") for entry in log.get("images", []) if isinstance(entry, dict)]
-    log_ok = (log.get("status") == "complete" and log.get("content_hash") == digest
-              and log.get("expected_images") == expected and recorded == expected)
+    log_ok = image_generation_log_matches_story(story, expected, log, digest)
     render = read_json(video.with_suffix(".render.json"))
     rendered = (render.get("used_generated_images") is True and render.get("content_hash") == digest
                 and canonical_path(render.get("image_directory", "")) == image_dir
