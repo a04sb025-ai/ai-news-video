@@ -2,6 +2,9 @@ name: Compare GPT-Image-2 vs GPT-Image-2.5 Flare
 run-name: GPT-Image-2 vs 2.5 Flare / ${{ inputs.request_id || 'cost-benchmark' }}
 
 "on":
+  push:
+    branches:
+      - experiment/chatgpt-quality-image-compare-20261001
   workflow_dispatch:
     inputs:
       story_json_path:
@@ -103,15 +106,15 @@ jobs:
                   print("Using inline payload_json from workflow_dispatch")
               else:
                   parsed = {
-                      "request_id": "gpt-image-cost-benchmark",
-                      "headline": "AIツールの新しい機能",
-                      "summary": "日々の作業を効率化する新機能を紹介します",
-                      "hook": "何が変わる？",
+                      "request_id": "chatgpt-quality-image-compare-20261001",
+                      "headline": "OpenAI、最先端AIの学習を一時停止",
+                      "summary": "ChatGPTで好評だった縦型ニュースサムネとAPI画像生成の品質差を確認する比較用題材",
+                      "hook": "何が起きた？",
                       "image_scenes": [{
                           "role": "hook",
-                          "verified_content": "AIツールに新しい機能が追加されたという想定の比較用サンプル",
-                          "visual_intent": "新機能によって作業がシンプルになる変化を一つの主役で示す",
-                          "key_visuals": ["作業の簡素化", "新しい機能"]
+                          "verified_content": "比較用題材: OpenAI、最先端AIの学習を一時停止",
+                          "visual_intent": "AIサーバーやデータの流れが停止・中断したことを、赤い意味アクセントと深い青のニュースポスターとして一目で示す",
+                          "key_visuals": ["AIサーバー", "停止・中断", "深い青と赤のコントラスト"]
                       }]
                   }
                   print("No custom input supplied; using the built-in cost benchmark payload")
@@ -129,10 +132,10 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           STORY_PATH: ${{ steps.input.outputs.story_path }}
           PAYLOAD_PATH: ${{ steps.input.outputs.payload_path }}
-          REQUEST_ID: ${{ inputs.request_id }}
-          MODELS: ${{ inputs.models }}
-          SIZE: ${{ inputs.size }}
-          QUALITY: ${{ inputs.quality }}
+          REQUEST_ID: ${{ inputs.request_id || 'chatgpt-quality-image-compare-20261001' }}
+          MODELS: ${{ inputs.models || 'gpt-image-2,gpt-image-2.5-flare,gpt-image-2.5-sunburst' }}
+          SIZE: ${{ inputs.size || '1024x1536' }}
+          QUALITY: ${{ inputs.quality || 'medium' }}
         run: |
           args=(--models "$MODELS" --size "$SIZE" --quality "$QUALITY")
           if [[ -n "$STORY_PATH" ]]; then
@@ -146,7 +149,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: image-model-ab-test-${{ inputs.request_id || github.run_number }}
+          name: image-model-ab-test-${{ inputs.request_id || 'chatgpt-quality-image-compare-20261001' }}
           if-no-files-found: warn
           retention-days: 30
           path: assets/generated/ab-tests/**
@@ -156,9 +159,9 @@ jobs:
           {
             echo "## GPT image cost comparison"
             echo ""
-            echo "- Models: \`${{ inputs.models }}\`"
-            echo "- Size: \`${{ inputs.size }}\`"
-            echo "- Quality: \`${{ inputs.quality }}\`"
+            echo "- Models: \`${{ inputs.models || 'gpt-image-2,gpt-image-2.5-flare,gpt-image-2.5-sunburst' }}\`"
+            echo "- Size: \`${{ inputs.size || '1024x1536' }}\`"
+            echo "- Quality: \`${{ inputs.quality || 'medium' }}\`"
             echo "- This workflow does not change the production model."
             echo ""
             echo "The artifact now contains cost-comparison.json and cost-comparison.md with token usage, elapsed time, and an estimated API cost for each model."
