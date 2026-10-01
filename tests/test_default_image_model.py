@@ -15,9 +15,21 @@ class DefaultImageModelTest(unittest.TestCase):
         config = json.loads((ROOT / "config/image-generation.json").read_text())
         self.assertEqual(config["quality"], "low")
 
-    def test_generation_script_reads_model_from_config(self):
+    def test_finished_opening_uses_separate_medium_profile(self):
+        config = json.loads((ROOT / "config/image-generation.json").read_text())
+        opening = config["opening_thumbnail"]
+        self.assertTrue(opening["enabled"])
+        self.assertEqual(opening["model"], "gpt-image-2")
+        self.assertEqual(opening["size"], "864x1536")
+        self.assertEqual(opening["quality"], "medium")
+        self.assertEqual(opening["asset_name"], "opening-thumbnail.png")
+
+    def test_generation_script_keeps_body_model_and_reads_opening_profile(self):
         source = (ROOT / "scripts/generate_story_images.py").read_text()
-        self.assertIn('"model":CONFIG["model"]', source)
+        self.assertIn('"model": CONFIG["model"]', source)
+        self.assertIn("opening_thumbnail_profile()", source)
+        self.assertIn("OPENING_THUMBNAIL_MODEL", source)
+        self.assertIn("OPENING_THUMBNAIL_QUALITY", source)
 
 
 if __name__ == "__main__":

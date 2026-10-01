@@ -8,6 +8,9 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = json.loads((ROOT / "config/image-generation.json").read_text())
+OPENING_THUMBNAIL_CONFIG = CONFIG.get("opening_thumbnail", {})
+OPENING_THUMBNAIL_ENABLED = bool(OPENING_THUMBNAIL_CONFIG.get("enabled", False))
+OPENING_THUMBNAIL_ASSET = str(OPENING_THUMBNAIL_CONFIG.get("asset_name") or "opening-thumbnail.png")
 MAX_IMAGES = 10
 VALID_QUALITIES = {"low", "medium", "high"}
 RETRYABLE_HTTP_STATUSES = {408, 409, 429, 500, 502, 503, 504}
@@ -29,6 +32,21 @@ COMMON = (
     "stock illustration, glossy 3D CG, plastic skin, glowing brain/orb. No robot, humanoid mascot, shield/star/brain icon. "
     "Do not draw Mozo or any substitute mascot; the renderer adds the canonical character. "
     "No words, letters, numbers, logos, watermark, or readable fake UI. Show the news meaning, not AI as a symbol. "
+)
+FINISHED_OPENING_POSTER = (
+    "Create the complete final opening thumbnail as one integrated vertical Japanese AI-news poster. "
+    "This is not a background illustration and not a split layout. Do not reserve an empty typography zone: "
+    "the headline, brand labels, emphasis, subject, lighting, and background must be designed together as one finished composition. "
+    "Visible Japanese text is allowed and required for this dedicated opening thumbnail. "
+    "Render the supplied Japanese strings accurately, boldly, and at phone-readable size. "
+    "Use strong editorial hierarchy, cinematic depth, crisp high-contrast lighting, realistic material detail, and one dominant visual idea. "
+    "The composition may vary freely by story; do not force a fixed template, fixed subject position, or fixed empty top area. "
+    "Deep navy or black with cyan/electric-blue may be used as the series foundation, while one semantic accent color may be used strongly. "
+    "For a verified stop, block, outage, warning, or interruption, one controlled saturated red accent or pause/interruption motif is allowed. "
+    "A company or product name, wordmark, or logo may appear only when that entity is explicitly named in the verified context; "
+    "do not invent brands, people, products, outcomes, danger, or claims. "
+    "Avoid generic AI icon piles, robot mascots, glowing brains, stock illustration look, tiny text, clutter, fake dashboards, unreadable microcopy, "
+    "and any important element touching the outer edge. Keep safe margins while using the full frame dynamically. "
 )
 OPENING_POSTER = (
     "Opening art direction: poster-grade vertical editorial key art, not a generic explainer illustration. "
@@ -86,8 +104,41 @@ def effective_quality():
     if quality not in VALID_QUALITIES: raise ValueError(f"unsupported image quality: {quality}")
     return quality
 
+def opening_thumbnail_profile():
+    model = os.environ.get("OPENING_THUMBNAIL_MODEL", str(OPENING_THUMBNAIL_CONFIG.get("model") or CONFIG["model"])).strip()
+    size = os.environ.get("OPENING_THUMBNAIL_SIZE", str(OPENING_THUMBNAIL_CONFIG.get("size") or CONFIG["size"])).strip()
+    quality = os.environ.get("OPENING_THUMBNAIL_QUALITY", str(OPENING_THUMBNAIL_CONFIG.get("quality") or CONFIG["quality"])).strip().lower()
+    if quality not in VALID_QUALITIES:
+        raise ValueError(f"unsupported opening thumbnail quality: {quality}")
+    if not model:
+        raise ValueError("opening thumbnail model must not be empty")
+    if not size:
+        raise ValueError("opening thumbnail size must not be empty")
+    return {"model": model, "size": size, "quality": quality}
+
 def story_prompts(path):
     story=json.loads(path.read_text()); scenes=story["image_scenes"]; prompts={}
+    opening=story.get("opening") or {}
+    finished_asset = opening.get("finished_thumbnail_asset") if OPENING_THUMBNAIL_ENABLED else None
+    if finished_asset and scenes:
+        first_scene = scenes[0]
+        first_cue = (story.get("script") or [{}])[0]
+        headline = " ".join(str(first_cue.get("caption") or "").replace("\n", " ").split())
+        verified = str(first_scene.get("verified_content") or "")
+        intent = str(first_scene.get("visual_intent") or "")
+        visuals = ", ".join(first_scene.get("key_visuals", []))
+        style = THUMBNAIL_STYLE.get(first_scene.get("thumbnail_style"), "")
+        prompts[str(finished_asset)] = (
+            FINISHED_OPENING_POSTER
+            + style
+            + ' Exact visible Japanese text: top-left small label "今朝のAIニュース"; '
+            + 'top-right small brand "AIツールウォッチ"; '
+            + f'main headline "{headline}". '
+            + "Emphasize only the most important phrase with a single strong accent color if useful. "
+            + (f"Visual intent: {intent}. " if intent else "")
+            + (f"Required concrete visual elements: {visuals}. " if visuals else "")
+            + f"Ground every visual claim only in this verified context: {verified}"
+        )
     for name, scene in zip(story["image_assets"], scenes):
         intent=scene.get("visual_intent", ""); visual_type=scene.get("visual_type", "editorial"); visuals=", ".join(scene.get("key_visuals", [])); thumbnail_style=scene.get("thumbnail_style")
         prompts[name]=(COMMON + ((OPENING_POSTER + OPENING_LAYOUT + THUMBNAIL_STYLE.get(thumbnail_style, "")) if thumbnail_style else BODY_LAYOUT) + f" Scene role: {scene['role']}." + f" Visual explanation type: {visual_type}." + (f" Visual intent: {intent}." if intent else "") + (f" Required concrete visual elements: {visuals}." if visuals else "") + f" Depict only this verified context: {scene['verified_content']}")
@@ -118,13 +169,17 @@ def request_generation(payload, api_key):
     raise last_error or ImageGenerationError("image provider request failed")
 
 def generate(destination,prompt,api_key,quality):
+    is_finished_opening = OPENING_THUMBNAIL_ENABLED and destination.name == OPENING_THUMBNAIL_ASSET
+    profile = opening_thumbnail_profile() if is_finished_opening else {"model": CONFIG["model"], "size": CONFIG["size"], "quality": quality}
     if destination.is_file() and destination.stat().st_size>0:
-        print(f"reuse {destination.relative_to(ROOT)}"); return {"result":"reused","attempts":0}
-    payload=json.dumps({"model":CONFIG["model"],"prompt":prompt,"size":CONFIG["size"],"quality":quality,"n":1,"output_format":"png"}).encode()
+        print(f"reuse {destination.relative_to(ROOT)}")
+        return {"result":"reused","attempts":0,**profile}
+    payload=json.dumps({"model":profile["model"],"prompt":prompt,"size":profile["size"],"quality":profile["quality"],"n":1,"output_format":"png"}).encode()
     result,attempts=request_generation(payload,api_key); data=result["data"][0].get("b64_json")
     if not data: raise ImageGenerationError("image provider returned no PNG data",attempts=attempts)
     temporary=destination.with_suffix(".png.part"); temporary.write_bytes(base64.b64decode(data,validate=True)); temporary.replace(destination)
-    print(f"generated {destination.relative_to(ROOT)} quality={quality} attempts={attempts}"); return {"result":"generated","attempts":attempts}
+    print(f"generated {destination.relative_to(ROOT)} model={profile['model']} size={profile['size']} quality={profile['quality']} attempts={attempts}")
+    return {"result":"generated","attempts":attempts,**profile}
 
 def generate_pending_scenes(output, prompts, key, quality, log):
     """Generate independently and retry only missing scenes once, serially.
@@ -191,9 +246,13 @@ def generate_pending_scenes(output, prompts, key, quality, log):
             print(f"retrying only missing scene {name} serially", flush=True)
             run_scene(name, prompts[name], retry=True)
 
+    opening_failure = failures.pop(OPENING_THUMBNAIL_ASSET, None) if OPENING_THUMBNAIL_ENABLED else None
+    if opening_failure:
+        log["opening_thumbnail_fallback"] = opening_failure
+        print("finished opening thumbnail generation failed; renderer will use legacy composed opening", file=sys.stderr, flush=True)
     log["images"] = [results[name] for name in prompts if name in results]
     log["failures"] = [failures[name] for name in prompts if name in failures]
-    log["status"] = "complete" if not failures else "partial-failure"
+    log["status"] = "complete-with-opening-fallback" if opening_failure and not failures else ("complete" if not failures else "partial-failure")
     if failures:
         log["reason"] = "One or more scene images could not be generated; publish gate remains blocked"
     return not failures
@@ -205,7 +264,8 @@ def main():
     if len(prompts)>MAX_IMAGES: raise SystemExit(f"image budget exceeded: maximum is {MAX_IMAGES}")
     if not prompts: raise SystemExit("image scene list is empty")
     output.mkdir(parents=True,exist_ok=True); quality=effective_quality()
-    log={"prompt_version":"daily-editorial-v7-poster-grade" if len(sys.argv)==2 else CONFIG["prompt_version"],"content_hash":json.loads(Path(sys.argv[1]).read_text()).get("content_hash") if len(sys.argv)==2 else None,"maximum":MAX_IMAGES,"configured_quality":CONFIG["quality"],"effective_quality":quality,"model":CONFIG["model"],"news_date":os.environ.get("NEWS_DATE"),"request_attempts":IMAGE_GENERATION_ATTEMPTS,"failed_scene_retries":FAILED_SCENE_RETRIES,"generation_workers":min(IMAGE_GENERATION_WORKERS,len(prompts)),"expected_images":list(prompts),"images":[],"failures":[]}
+    opening_profile = opening_thumbnail_profile() if OPENING_THUMBNAIL_ENABLED and OPENING_THUMBNAIL_ASSET in prompts else None
+    log={"prompt_version":"daily-editorial-v8-finished-opening" if len(sys.argv)==2 else CONFIG["prompt_version"],"content_hash":json.loads(Path(sys.argv[1]).read_text()).get("content_hash") if len(sys.argv)==2 else None,"maximum":MAX_IMAGES,"configured_quality":CONFIG["quality"],"effective_quality":quality,"model":CONFIG["model"],"opening_thumbnail":opening_profile,"news_date":os.environ.get("NEWS_DATE"),"request_attempts":IMAGE_GENERATION_ATTEMPTS,"failed_scene_retries":FAILED_SCENE_RETRIES,"generation_workers":min(IMAGE_GENERATION_WORKERS,len(prompts)),"expected_images":list(prompts),"images":[],"failures":[]}
     key=os.environ.get(CONFIG["api_key_env"])
     if not key:
         log["status"]="fallback"; log["reason"]=f"{CONFIG['api_key_env']} not configured"; (output/"image-generation-log.json").write_text(json.dumps(log,indent=2)+"\n"); print(log["reason"]+"; renderer will use fallback",file=sys.stderr); return 2

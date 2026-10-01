@@ -5,5 +5,13 @@
   "quality": "low",
   "prompt_version": "teen-editorial-v2",
   "api_key_env": "OPENAI_API_KEY",
-  "output_directory": "assets/generated"
+  "output_directory": "assets/generated",
+  "opening_thumbnail": {
+    "enabled": true,
+    "model": "gpt-image-2",
+    "size": "864x1536",
+    "quality": "medium",
+    "asset_name": "opening-thumbnail.png",
+    "prompt_version": "finished-opening-poster-v1"
+  }
 }
