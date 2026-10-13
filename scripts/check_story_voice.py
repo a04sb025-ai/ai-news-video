@@ -21,7 +21,12 @@ def build_report(story):
         if written not in source:
             skipped.append(written)
             continue
-        checks[f"term_{written}_normalized"] = written not in narration and reading in narration
+        # A pronunciation/clarification may intentionally preserve the written term
+        # inside the expanded reading, e.g. "チップレット" ->
+        # "チップレット（小分けのチップ）". Remove verified expanded readings
+        # before checking for any truly unnormalized raw occurrences.
+        remaining = narration.replace(reading, "")
+        checks[f"term_{written}_normalized"] = reading in narration and written not in remaining
     checks["captions_do_not_expose_internal_keys"] = not any(
         key in cue.get("caption", "") for cue in cues for key in INTERNAL_KEYS
     )
