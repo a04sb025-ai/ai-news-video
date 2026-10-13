@@ -94,6 +94,20 @@ class DailyStoryTest(unittest.TestCase):
  def test_used_narration_term_unreplaced_fails(self):
   story=daily.build_story(valid()); story["script"][0]["narration"]="AIをそのまま読む"
   self.assertFalse(voice.build_report(story)["checks"]["term_AI_normalized"])
+ def test_explanatory_narration_term_containing_source_term_passes(self):
+  story=daily.build_story(valid())
+  story["voice_pronunciations"]["チップレット"]="チップレット（小分けのチップ）"
+  story["script"][0]["source_narration"]="チップレットを使います"
+  story["script"][0]["narration"]="チップレット（小分けのチップ）を使います"
+  report=voice.build_report(story)
+  self.assertTrue(report["checks"]["term_チップレット_normalized"])
+ def test_explanatory_narration_term_still_rejects_raw_occurrence(self):
+  story=daily.build_story(valid())
+  story["voice_pronunciations"]["チップレット"]="チップレット（小分けのチップ）"
+  story["script"][0]["source_narration"]="チップレットを使います"
+  story["script"][0]["narration"]="チップレット（小分けのチップ）とチップレットを使います"
+  report=voice.build_report(story)
+  self.assertFalse(report["checks"]["term_チップレット_normalized"])
  def test_missing_evidence_still_writes_failed_result(self):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d); story=root/"story.json"; story.write_text(json.dumps(daily.build_story(valid()))); output=root/"automation-result.json"
