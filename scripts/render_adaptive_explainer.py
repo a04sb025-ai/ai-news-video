@@ -53,6 +53,12 @@ OPENING_END = min(3.0, float(story["script"][0]["end"]))
 OPENING_LAYOUT_CONTRACT = "generated-complete-poster-v1" if USE_FINISHED_OPENING else "split-text-visual-v1"
 BODY_LAYOUT_CONTRACT = "youtube-shorts-ui-safe-v2"
 THUMBNAIL_RENDER_SECONDS = min(0.5, max(0.1, OPENING_END / 2))
+THREE_POSTER_TRIAL = (
+    story.get("production_profile") == "three-poster-infographic-trial-v1"
+    and len(STORY_IMAGES) == 2
+    and len(story.get("poster_page_groups", [])) == 2
+)
+OPENING_HOLD_END = float(story["script"][0]["end"]) if THREE_POSTER_TRIAL and USE_FINISHED_OPENING else OPENING_END
 
 # Published production narration uses one natural TTS pass. Open JTalk remains
 # available for deterministic offline CI and scene-only timing probes, but its
@@ -382,6 +388,7 @@ with tempfile.TemporaryDirectory() as directory:
     story["expected_duration_seconds"] = round(DURATION, 2)
     story["timing_contract"] = "single-pass-final-wav-audio-led-v5"
     OPENING_END = min(3.0, float(story["script"][0]["end"]))
+    OPENING_HOLD_END = float(story["script"][0]["end"]) if THREE_POSTER_TRIAL and USE_FINISHED_OPENING else OPENING_END
     THUMBNAIL_RENDER_SECONDS = min(0.5, max(0.1, OPENING_END / 2))
     story_path.write_text(json.dumps(story, ensure_ascii=False, indent=2) + "\n")
 
@@ -419,7 +426,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     page_cues = story["script"][:-1]
     for index, cue in enumerate(story["script"]):
         start, end = float(cue["start"]), float(cue["end"])
-        chrome_start = OPENING_END if index == 0 and USE_FINISHED_OPENING else start
+        chrome_start = OPENING_HOLD_END if index == 0 and USE_FINISHED_OPENING else start
         if end > chrome_start:
             events.append(vector(chrome_start, end, rect_path(72, 1760, 936, 8), "4A526A", layer=1))
             progress = round(936 * end / DURATION)
@@ -427,10 +434,14 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 
         if index == 0:
             add_opening(events, cue)
-            add_opening_body_page(events, cue, OPENING_END, end)
-            add_opening_timed_subtitles(events, cue, OPENING_END)
+            if not (THREE_POSTER_TRIAL and USE_FINISHED_OPENING):
+                add_opening_body_page(events, cue, OPENING_END, end)
+                add_opening_timed_subtitles(events, cue, OPENING_END)
         elif index < len(page_cues):
-            add_body_page(events, cue, start, end)
+            if not THREE_POSTER_TRIAL:
+                add_body_page(events, cue, start, end)
+            # Finished infographics already carry their own titles and key facts.
+            # Keep narration-synced captions in the reserved quiet middle band.
             add_timed_subtitles(events, cue)
         else:
             events.append(vector(start, end, rect_path(190, 760, 700, 8), "58D6FF", r"\fad(100,120)", 2))
@@ -465,13 +476,22 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     filters = []
     current = "[0:v]"
     if USE_STORY_IMAGES:
-        for scene_no, (image_index, cue) in enumerate(zip(image_indices, page_cues)):
+        if THREE_POSTER_TRIAL:
+            image_cues = [
+                (image_index, page_cues[int(group["start_page_index"])]["start"],
+                 page_cues[int(group["end_page_index"]) - 1]["end"])
+                for image_index, group in zip(image_indices, story["poster_page_groups"])
+            ]
+        else:
+            image_cues = [(image_index, cue["start"], cue["end"])
+                          for image_index, cue in zip(image_indices, page_cues)]
+        for scene_no, (image_index, scene_start, scene_end) in enumerate(image_cues):
             scaled = f"scene{scene_no}"
             out = f"v{scene_no + 1}"
             filters.append(
                 f"[{image_index}:v]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT},setsar=1[{scaled}];"
             )
-            filters.append(f"{current}[{scaled}]overlay=enable='between(t,{cue['start']},{cue['end']})'[{out}];")
+            filters.append(f"{current}[{scaled}]overlay=enable='between(t,{scene_start},{scene_end})'[{out}];")
             current = f"[{out}]"
     if USE_MOZO_OPENING_ASSET:
         filters.append(f"[{mozo_index}:v]scale=190:-1[mozo];")
@@ -479,7 +499,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         current = "[withmozo]"
     if finished_opening_index is not None:
         filters.append(f"[{finished_opening_index}:v]scale={WIDTH}:{HEIGHT},setsar=1[finishedopening];")
-        filters.append(f"{current}[finishedopening]overlay=enable='between(t,0,{OPENING_END})'[withfinishedopening];")
+        filters.append(f"{current}[finishedopening]overlay=enable='between(t,0,{OPENING_HOLD_END})'[withfinishedopening];")
         current = "[withfinishedopening]"
     filters.append(f"{current}subtitles={ass}[video]")
 
@@ -538,7 +558,11 @@ manifest = {
     "subtitle_segment_count": sum(len(cue.get("subtitleSegments", [])) for cue in page_cues),
     "static_image_input_fps": FPS,
     "audio_tempo_adjustment": False,
-    "full_narration_subtitles": True,
+    "full_narration_subtitles": not (THREE_POSTER_TRIAL and USE_FINISHED_OPENING),
+    "three_poster_infographic_trial": THREE_POSTER_TRIAL,
+    "poster_count": 3 if THREE_POSTER_TRIAL and USE_FINISHED_OPENING else None,
+    "opening_visual_hold_seconds": round(OPENING_HOLD_END, 3),
+    "poster_page_groups": story.get("poster_page_groups", []),
     "subtitle_font_size_px": 48,
     "opening_subtitle_font_size_px": 46,
     "opening_headline_font_size_px": None if USE_FINISHED_OPENING else {"A": 108, "B": 106, "C": 120}[OPENING_STYLE],
