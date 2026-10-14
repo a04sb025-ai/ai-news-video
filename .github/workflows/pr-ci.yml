@@ -116,3 +116,46 @@ jobs:
           assert result['auto_publish_ready'] is False
           assert result['used_generated_images'] is False
           PY
+      - name: Smoke-render October 15 three-poster trial without any image API calls
+        env:
+          OPENAI_API_KEY: ''
+        run: |
+          mkdir -p work/ci-poster dist/ci-poster
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path('tests/fixtures/daily-story-adaptive-valid.json').read_text())
+          payload['request_id'] = 'daily-news-2026-10-15-ci-test'
+          Path('work/ci-poster/input.json').write_text(json.dumps(payload, ensure_ascii=False))
+          PY
+          python3 scripts/adaptive_daily_story.py prepare work/ci-poster/input.json work/ci-poster
+          python3 - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+          story = json.loads(Path('work/ci-poster/story.json').read_text())
+          assert story['production_profile'] == 'three-poster-infographic-trial-v1'
+          assets = Path(story['image_asset_dir'])
+          assets.mkdir(parents=True, exist_ok=True)
+          for filename in ['opening-thumbnail.png', *story['image_assets']]:
+              subprocess.run([
+                  'ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
+                  '-f', 'lavfi', '-i', 'color=c=0x1b2c42:s=864x1536',
+                  '-frames:v', '1', str(assets / filename)
+              ], check=True)
+          PY
+          VIDEO="dist/ci-poster/$(cat work/ci-poster/video-filename.txt)"
+          python3 scripts/render_adaptive_explainer.py work/ci-poster/story.json "$VIDEO"
+          python3 scripts/check_adaptive_video.py "$VIDEO" work/ci-poster/story.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          story = json.loads(Path('work/ci-poster/story.json').read_text())
+          filename = Path('work/ci-poster/video-filename.txt').read_text().strip()
+          manifest = json.loads((Path('dist/ci-poster') / filename.replace('.mp4', '.render.json')).read_text())
+          assert manifest['three_poster_infographic_trial'] is True
+          assert manifest['poster_count'] == 3
+          assert manifest['opening_visual_hold_seconds'] >= 3
+          assert len(manifest['poster_page_groups']) == 2
+          assert manifest['used_generated_images'] is True
+          PY
