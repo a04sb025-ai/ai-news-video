@@ -134,7 +134,9 @@ def add_opening_timed_subtitles(events, cue, visible_start):
             end,
             "Subtitle",
             wrap_timed_subtitle(segment["text"]),
-            r"\pos(90,535)\fs44\fad(60,60)",
+            (r"\pos(72,1090)\fs44\fad(60,60)"
+             if THREE_POSTER_TRIAL and USE_FINISHED_OPENING
+             else r"\pos(90,535)\fs44\fad(60,60)"),
             7,
         ))
 
@@ -436,7 +438,9 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             add_opening(events, cue)
             if not (THREE_POSTER_TRIAL and USE_FINISHED_OPENING):
                 add_opening_body_page(events, cue, OPENING_END, end)
-                add_opening_timed_subtitles(events, cue, OPENING_END)
+            # Preserve spoken-word captions from the first three-second hook onward,
+            # with the infographic-safe subtitle position in the experimental mode.
+            add_opening_timed_subtitles(events, cue, OPENING_END)
         elif index < len(page_cues):
             if not THREE_POSTER_TRIAL:
                 add_body_page(events, cue, start, end)
@@ -558,7 +562,7 @@ manifest = {
     "subtitle_segment_count": sum(len(cue.get("subtitleSegments", [])) for cue in page_cues),
     "static_image_input_fps": FPS,
     "audio_tempo_adjustment": False,
-    "full_narration_subtitles": not (THREE_POSTER_TRIAL and USE_FINISHED_OPENING),
+    "full_narration_subtitles": True,
     "three_poster_infographic_trial": THREE_POSTER_TRIAL,
     "poster_count": 3 if THREE_POSTER_TRIAL and USE_FINISHED_OPENING else None,
     "opening_visual_hold_seconds": round(OPENING_HOLD_END, 3),
