@@ -48,6 +48,21 @@ FINISHED_OPENING_POSTER = (
     "Avoid generic AI icon piles, robot mascots, glowing brains, stock illustration look, tiny text, clutter, fake dashboards, unreadable microcopy, "
     "and any important element touching the outer edge. Keep safe margins while using the full frame dynamically. "
 )
+BODY_INFOGRAPHIC_POSTER = (
+    "Create a finished premium vertical Japanese AI-news editorial infographic with the "
+    "SAME design quality and overall mood as the opening thumbnail. Integrate a bold "
+    "verified Japanese headline, cinematic subject artwork and one easy-to-understand "
+    "comparison or mechanism into one polished poster. Deep navy or black, crisp "
+    "cyan/electric blue highlights and a restrained second accent. NOT a generic "
+    "background illustration. Copy any visible Japanese text exactly from the given "
+    "verified phrases. Never invent statistics, company names, quotes, extra labels "
+    "or promises. Max two short supporting labels, no crowded tiny-text panels. "
+    "Place essential title, diagram and facts in the leftmost 80 percent and between "
+    "8 and 50 percent of the frame's height. Keep the region from about 56 percent "
+    "downward visually quiet for the spoken subtitles, the bottom 30 percent clear "
+    "of essential information, and the rightmost 18 percent clear for Shorts controls. "
+    "One visual should support several narration pages, not rush through mini-scenes. "
+)
 OPENING_POSTER = (
     "Opening art direction: poster-grade vertical editorial key art, not a generic explainer illustration. "
     "Create an arresting premium news-poster image with cinematic depth, crisp high-contrast lighting, realistic material detail, "
@@ -124,10 +139,15 @@ def story_prompts(path):
         first_scene = scenes[0]
         first_cue = (story.get("script") or [{}])[0]
         headline = " ".join(str(first_cue.get("caption") or "").replace("\n", " ").split())
-        verified = str(first_scene.get("verified_content") or "")
-        intent = str(first_scene.get("visual_intent") or "")
-        visuals = ", ".join(first_scene.get("key_visuals", []))
-        style = THUMBNAIL_STYLE.get(first_scene.get("thumbnail_style"), "")
+        if story.get("production_profile") == "three-poster-infographic-trial-v1":
+            verified = " / ".join(str(first_cue.get(field) or "") for field in ("caption", "support_text", "source_narration"))
+            intent = str(first_cue.get("visual_intent") or "")
+            visuals = ", ".join(first_cue.get("key_visuals") or [])
+        else:
+            verified = str(first_scene.get("verified_content") or "")
+            intent = str(first_scene.get("visual_intent") or "")
+            visuals = ", ".join(first_scene.get("key_visuals", []))
+        style = THUMBNAIL_STYLE.get(first_scene.get("thumbnail_style") or opening.get("thumbnail_style"), "")
         prompts[str(finished_asset)] = (
             FINISHED_OPENING_POSTER
             + style
@@ -141,7 +161,17 @@ def story_prompts(path):
         )
     for name, scene in zip(story["image_assets"], scenes):
         intent=scene.get("visual_intent", ""); visual_type=scene.get("visual_type", "editorial"); visuals=", ".join(scene.get("key_visuals", [])); thumbnail_style=scene.get("thumbnail_style")
-        prompts[name]=(COMMON + ((OPENING_POSTER + OPENING_LAYOUT + THUMBNAIL_STYLE.get(thumbnail_style, "")) if thumbnail_style else BODY_LAYOUT) + f" Scene role: {scene['role']}." + f" Visual explanation type: {visual_type}." + (f" Visual intent: {intent}." if intent else "") + (f" Required concrete visual elements: {visuals}." if visuals else "") + f" Depict only this verified context: {scene['verified_content']}")
+        if story.get("production_profile") == "three-poster-infographic-trial-v1":
+            prompts[name] = (
+                BODY_INFOGRAPHIC_POSTER
+                + f" Exact main headline: {scene['poster_headline']}. "
+                + f" Optional exact short labels: {', '.join(scene['poster_labels'])}. "
+                + f" Optional factual supporting text: {' / '.join(scene['poster_facts'])}. "
+                + (f"Illustrate these verified subjects: {visuals}. " if visuals else "")
+                + f"Ground all facts only in this verified news context: {scene['verified_content']}"
+            )
+        else:
+            prompts[name]=(COMMON + ((OPENING_POSTER + OPENING_LAYOUT + THUMBNAIL_STYLE.get(thumbnail_style, "")) if thumbnail_style else BODY_LAYOUT) + f" Scene role: {scene['role']}." + f" Visual explanation type: {visual_type}." + (f" Visual intent: {intent}." if intent else "") + (f" Required concrete visual elements: {visuals}." if visuals else "") + f" Depict only this verified context: {scene['verified_content']}")
     return ROOT / story["image_asset_dir"], prompts
 
 def provider_error_text(error):
@@ -170,7 +200,8 @@ def request_generation(payload, api_key):
 
 def generate(destination,prompt,api_key,quality):
     is_finished_opening = OPENING_THUMBNAIL_ENABLED and destination.name == OPENING_THUMBNAIL_ASSET
-    profile = opening_thumbnail_profile() if is_finished_opening else {"model": CONFIG["model"], "size": CONFIG["size"], "quality": quality}
+    is_editorial_infographic = destination.name in {"infographic-1.png", "infographic-2.png"}
+    profile = opening_thumbnail_profile() if (is_finished_opening or is_editorial_infographic) else {"model": CONFIG["model"], "size": CONFIG["size"], "quality": quality}
     if destination.is_file() and destination.stat().st_size>0:
         print(f"reuse {destination.relative_to(ROOT)}")
         return {"result":"reused","attempts":0,**profile}
