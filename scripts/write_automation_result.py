@@ -27,6 +27,18 @@ def canonical_path(path):
 
 def image_manifest_shape_valid(story, expected):
     """Validate legacy four-image stories and adaptive all-scene image manifests."""
+    if story.get("production_profile") == "three-poster-infographic-trial-v1":
+        groups = story.get("poster_page_groups", [])
+        scenes = story.get("image_scenes", [])
+        count = story.get("adaptive_page_count", 0)
+        return bool(
+            isinstance(count, int) and count >= 4
+            and len(expected) == len(scenes) == len(groups) == 2
+            and [group.get("asset") for group in groups] == expected
+            and groups[0].get("start_page_index") == 1
+            and groups[0].get("end_page_index") == groups[1].get("start_page_index")
+            and groups[1].get("end_page_index") == count
+        )
     if story.get("all_scene_visuals_required") is True:
         try:
             page_count = int(story.get("adaptive_page_count", 0))

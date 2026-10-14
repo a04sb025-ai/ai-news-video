@@ -37,6 +37,14 @@ MOZO_OPENING_ASSET = "assets/visual-references/mozo/mozo-opening.png"
 RICH_SPOKEN_CHARACTER_BUDGET = 52
 OUTRO_SECONDS = 2.5
 IMAGE_BUDGET = 4
+THREE_POSTER_TRIAL_START_DATE = "2026-10-15"
+THREE_POSTER_PROFILE = "three-poster-infographic-trial-v1"
+
+
+def use_three_poster_trial(payload):
+    """Run the reversible production experiment from the October 15 daily edition."""
+    match = re.match(r"^daily-news-(\d{4}-\d{2}-\d{2})(?:-|$)", str(payload.get("request_id", "")))
+    return bool(match and match.group(1) >= THREE_POSTER_TRIAL_START_DATE and len(payload.get("pages", [])) >= 4)
 BREAK_AFTER = ("。", "！", "？", "、", "：", ":", "—", "・", " ")
 OPENING_PROTECTED_TOKENS = ("投資", "出資", "買収", "増産", "拡大", "規制", "公開", "発表", "導入", "提供", "開始", "強化", "更新", "発売")
 COMMON_VOICE_READINGS = {
@@ -295,19 +303,44 @@ def build_story(payload):
         "source_narration": "AIツールウォッチ。",
         "narration": "エーアイツールウォッチ。",
     })
-    image_count = min(IMAGE_BUDGET, len(pages))
-    image_assets = [f"scene-{i}.png" for i in range(1, image_count + 1)]
-    image_scenes = []
-    for index, page in enumerate(pages[:image_count]):
-        scene = {
-            "role": page["page_role"],
-            "verified_content": f"{page['headline']} / {page['support_text']} / {page['narration']}",
-            "visual_intent": page["visual_intent"],
-            "key_visuals": page["key_visuals"],
-        }
-        if index == 0:
-            scene["thumbnail_style"] = thumbnail_style
-        image_scenes.append(scene)
+    three_poster_trial = use_three_poster_trial(payload)
+    poster_page_groups = []
+    if three_poster_trial:
+        # The separately generated opening thumbnail is poster 1. Two full-page
+        # editorial infographics cover every remaining spoken page.
+        midpoint = 1 + max(1, (len(pages) - 1) // 2)
+        image_assets = ["infographic-1.png", "infographic-2.png"]
+        image_scenes = []
+        for asset, (first, last) in zip(image_assets, ((1, midpoint), (midpoint, len(pages)))):
+            group = pages[first:last]
+            poster_page_groups.append({"asset": asset, "start_page_index": first, "end_page_index": last})
+            image_scenes.append({
+                "role": group[0]["page_role"],
+                "verified_content": " / ".join(
+                    f"{page['headline']}: {page['support_text']}. {page['narration']}" for page in group
+                ),
+                "visual_intent": group[0]["visual_intent"],
+                "key_visuals": list(dict.fromkeys(
+                    visual for page in group for visual in page["key_visuals"]
+                ))[:5],
+                "poster_headline": group[0]["headline"],
+                "poster_labels": [page["headline"] for page in group[1:3]],
+                "poster_facts": [page["support_text"] for page in group[:2]],
+            })
+    else:
+        image_count = min(IMAGE_BUDGET, len(pages))
+        image_assets = [f"scene-{i}.png" for i in range(1, image_count + 1)]
+        image_scenes = []
+        for index, page in enumerate(pages[:image_count]):
+            scene = {
+                "role": page["page_role"],
+                "verified_content": f"{page['headline']} / {page['support_text']} / {page['narration']}",
+                "visual_intent": page["visual_intent"],
+                "key_visuals": page["key_visuals"],
+            }
+            if index == 0:
+                scene["thumbnail_style"] = thumbnail_style
+            image_scenes.append(scene)
     story = {
         "request_id": payload["request_id"],
         "content_hash": digest,
@@ -318,6 +351,8 @@ def build_story(payload):
         "visual_standard": VISUAL_STANDARD,
         "visual_template": template,
         "explanation_contract": EXPLANATION_CONTRACT,
+        "production_profile": THREE_POSTER_PROFILE if three_poster_trial else "adaptive-legacy",
+        "poster_page_groups": poster_page_groups,
         "adaptive_page_count": len(pages),
         "expected_duration_seconds": script[-1]["end"],
         "opening": {
